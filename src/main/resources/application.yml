@@ -1,8 +1,5 @@
 spring:
   profiles:
-    active: prod
+    active: dev
 
-jwt:
-  secret:
-  access-token-expiration: 1800000
-  refresh-token-expiration: 604800000
+
