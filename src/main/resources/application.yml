@@ -1,0 +1,8 @@
+spring:
+  profiles:
+    active: prod
+
+jwt:
+  secret:
+  access-token-expiration: 1800000
+  refresh-token-expiration: 604800000
