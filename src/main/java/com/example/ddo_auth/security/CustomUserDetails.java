@@ -16,10 +16,9 @@ public class CustomUserDetails implements UserDetails {
         this.user = user;
     }
 
-    // 권한 관련 로직 (우린 지금 단순화)
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return null; // 추후 role 있으면 설정
+        return null;
     }
 
     @Override
