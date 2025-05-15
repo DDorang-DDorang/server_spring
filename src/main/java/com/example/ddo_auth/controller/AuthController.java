@@ -79,4 +79,37 @@ public class AuthController {
         authService.signup(request);
         return ResponseEntity.status(HttpStatus.CREATED).build();
     }
+
+    @PostMapping("/reset-password/request")
+    public ResponseEntity<Void> requestPasswordReset(@RequestBody Map<String, String> body) {
+        String email = body.get("email");
+        String code = verificationCodeService.createAndSaveResetCode(email);
+        emailService.sendEmailCode(email, code);
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/reset-password/verify")
+    public ResponseEntity<?> verifyResetCode(@RequestBody Map<String, String> body) {
+        String email = body.get("email");
+        String code = body.get("code");
+
+        boolean verified = verificationCodeService.verifyResetCode(email, code);
+        if (!verified) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("인증 실패");
+        }
+        return ResponseEntity.ok("인증 성공");
+    }
+
+    @PostMapping("/reset-password/confirm")
+    public ResponseEntity<?> confirmNewPassword(@RequestBody Map<String, String> body) {
+        String email = body.get("email");
+        String newPassword = body.get("newPassword");
+
+        if (!verificationCodeService.isResetVerified(email)) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("이메일 인증이 필요합니다.");
+        }
+
+        authService.updatePassword(email, newPassword);
+        return ResponseEntity.ok("비밀번호가 재설정되었습니다.");
+    }
 }

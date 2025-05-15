@@ -40,4 +40,9 @@ public class RefreshTokenService {
     public void deleteRefreshToken(String email) {
         redisTemplate.delete("refreshToken:" + email);
     }
+
+    public boolean validateRefreshToken(String email, String refreshToken) {
+        String storedToken = getRefreshToken(email);
+        return storedToken != null && storedToken.equals(refreshToken);
+    }
 }

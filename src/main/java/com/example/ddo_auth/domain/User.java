@@ -5,7 +5,7 @@ import lombok.*;
 import java.util.UUID;
 
 @Entity
-@Table(name = "user")
+@Table(name = "users")
 @Getter
 @Setter
 @NoArgsConstructor
@@ -24,6 +24,14 @@ public class User {
     @Column(nullable = false, length = 255)
     private String password;
 
-    @Column(length = 100)
+    @Column(length = 100, columnDefinition = "VARCHAR(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
     private String name;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private Provider provider;
+
+    public enum Provider {
+        LOCAL, GOOGLE
+    }
 }

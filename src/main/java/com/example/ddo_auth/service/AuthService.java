@@ -37,6 +37,7 @@ public class AuthService {
                 .email(email)
                 .password(encodedPassword)
                 .name(request.getName())
+                .provider(User.Provider.LOCAL)
                 .build();
 
         userRepository.save(user);
@@ -80,5 +81,14 @@ public class AuthService {
 
         String email = jwtTokenProvider.getUserEmailFromToken(refreshToken);
         refreshTokenService.deleteRefreshToken(email);
+    }
+
+    //비밀번호 재설정
+    public void updatePassword(String email, String newPassword) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 이메일입니다."));
+
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
     }
 }
