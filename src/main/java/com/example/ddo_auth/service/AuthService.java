@@ -2,6 +2,7 @@ package com.example.ddo_auth.service;
 
 import com.example.ddo_auth.domain.User;
 import com.example.ddo_auth.dto.LoginRequest;
+import com.example.ddo_auth.dto.SignupRequest;
 import com.example.ddo_auth.dto.TokenResponse;
 import com.example.ddo_auth.jwt.JwtTokenProvider;
 import com.example.ddo_auth.repository.UserRepository;
@@ -17,6 +18,29 @@ public class AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final PasswordEncoder passwordEncoder;
     private final RefreshTokenService refreshTokenService;
+    private final VerificationCodeService verificationCodeService;
+
+    public void signup(SignupRequest request) {
+        String email = request.getEmail();
+
+        if (userRepository.findByEmail(email).isPresent()) {
+            throw new IllegalArgumentException("이미 가입된 이메일입니다.");
+        }
+
+        if (!verificationCodeService.isEmailVerified(email)) {
+            throw new IllegalArgumentException("이메일 인증이 필요합니다.");
+        }
+
+        String encodedPassword = passwordEncoder.encode(request.getPassword());
+
+        User user = User.builder()
+                .email(email)
+                .password(encodedPassword)
+                .name(request.getName())
+                .build();
+
+        userRepository.save(user);
+    }
 
     public TokenResponse login(LoginRequest request) {
         User user = userRepository.findByEmail(request.getEmail())

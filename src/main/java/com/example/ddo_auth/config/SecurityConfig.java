@@ -17,7 +17,6 @@ public class SecurityConfig {
 
     private final JwtTokenProvider jwtTokenProvider;
 
-    // 생성자 주입
     public SecurityConfig(JwtTokenProvider jwtTokenProvider) {
         this.jwtTokenProvider = jwtTokenProvider;
     }
@@ -27,7 +26,7 @@ public class SecurityConfig {
         http
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/auth/**").permitAll()
+                        .requestMatchers("/auth/**", "/test/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(new JwtAuthenticationFilter(jwtTokenProvider), UsernamePasswordAuthenticationFilter.class);
