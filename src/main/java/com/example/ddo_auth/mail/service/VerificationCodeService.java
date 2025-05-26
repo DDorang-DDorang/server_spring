@@ -65,6 +65,4 @@ public class VerificationCodeService {
     public boolean isResetVerified(String email) {
         return "true".equals(redisTemplate.opsForValue().get(RESET_VERIFIED_PREFIX + email));
     }
-
-
 }

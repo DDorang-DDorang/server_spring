@@ -17,38 +17,44 @@ public class RedisRefreshTokenRepository implements RefreshTokenRepository {
     @Value("${jwt.refresh-token-expiration}")
     private Long refreshTokenExpiration;
 
-    private static final String KEY_PREFIX = "refreshToken:";
+    private static final String KEY_PREFIX     = "refreshToken:";   // email → RT
+    private static final String REV_PREFIX     = "emailOf:";        // RT    → email
 
     @Override
     public void save(String email, String token) {
-        String key = KEY_PREFIX + email;
-        redisTemplate.opsForValue().set(key, token, refreshTokenExpiration, TimeUnit.MILLISECONDS);
+        redisTemplate.opsForValue()
+                .set(KEY_PREFIX + email, token,
+                        refreshTokenExpiration, TimeUnit.MILLISECONDS);
+        saveMapping(token, email);
     }
 
     @Override
     public Optional<String> findByEmail(String email) {
-        String key = KEY_PREFIX + email;
-        String token = redisTemplate.opsForValue().get(key);
-        return Optional.ofNullable(token);
+        return Optional.ofNullable(
+                redisTemplate.opsForValue().get(KEY_PREFIX + email));
     }
 
     @Override
     public void deleteByEmail(String email) {
-        String key = KEY_PREFIX + email;
-        redisTemplate.delete(key);
+        findByEmail(email).ifPresent(this::deleteByToken);
+        redisTemplate.delete(KEY_PREFIX + email);
     }
 
     @Override
-    public boolean existsByEmailAndToken(String email, String token) {
-        return findByEmail(email)
-                .map(storedToken -> storedToken.equals(token))
-                .orElse(false);
+    public void saveMapping(String token, String email) {
+        redisTemplate.opsForValue()
+                .set(REV_PREFIX + token, email,
+                        refreshTokenExpiration, TimeUnit.MILLISECONDS);
     }
 
     @Override
-    public boolean existsByEmail(String email) {
-        String key = KEY_PREFIX + email;
-        return Boolean.TRUE.equals(redisTemplate.hasKey(key));
+    public void deleteByToken(String token) {
+        redisTemplate.delete(REV_PREFIX + token);
+    }
+
+    @Override
+    public Optional<String> findEmailByToken(String token) {
+        return Optional.ofNullable(
+                redisTemplate.opsForValue().get(REV_PREFIX + token));
     }
 }
-

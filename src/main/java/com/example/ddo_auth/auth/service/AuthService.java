@@ -5,6 +5,7 @@ import com.example.ddo_auth.auth.dto.EmailLoginRequest;
 import com.example.ddo_auth.auth.dto.SignupRequest;
 import com.example.ddo_auth.auth.dto.TokenResponse;
 import com.example.ddo_auth.auth.security.JwtTokenProvider;
+import com.example.ddo_auth.mail.service.EmailService;
 import com.example.ddo_auth.mail.service.VerificationCodeService;
 import com.example.ddo_auth.auth.repository.UserRepository;
 import com.example.ddo_auth.auth.repository.RefreshTokenRepository;
@@ -19,8 +20,29 @@ public class AuthService {
     private final UserRepository userRepository;
     private final JwtTokenProvider jwtTokenProvider;
     private final PasswordEncoder passwordEncoder;
-    private final RefreshTokenRepository refreshTokenRepository; // RefreshTokenService → RefreshTokenRepository
+    private final RefreshTokenRepository refreshTokenRepository;
     private final VerificationCodeService verificationCodeService;
+    private final EmailService emailService;
+
+
+    //회원가입 시 중복회원이면 이메일 전송 x
+    public void requestSignupCode(String email) {
+        if (userRepository.findByEmail(email).isPresent()) {
+            throw new IllegalArgumentException("이미 가입된 이메일입니다.");
+        }
+        String code = verificationCodeService.createAndSaveCode(email);
+        emailService.sendEmailCode(email, code);
+    }
+
+    //비밀번호 재설정 시 존재하지 않는 이메일이면 코드 전송x
+    public void requestResetCode(String email) {
+        if (userRepository.findByEmail(email).isEmpty()) {
+            throw new IllegalArgumentException("존재하지 않는 이메일입니다.");
+        }
+        String code = verificationCodeService.createAndSaveResetCode(email);
+        emailService.sendEmailCode(email, code);
+    }
+
 
     public void signup(SignupRequest request) {
         String email = request.getEmail();
@@ -55,7 +77,7 @@ public class AuthService {
 
         String accessToken = jwtTokenProvider.createAccessToken(user.getEmail());
         String refreshToken = jwtTokenProvider.createRefreshToken(user.getEmail());
-        refreshTokenRepository.save(user.getEmail(), refreshToken); // 메서드명 동일
+        refreshTokenRepository.save(user.getEmail(), refreshToken);
 
         return new TokenResponse(accessToken, refreshToken);
     }
@@ -109,6 +131,6 @@ public class AuthService {
         userRepository.delete(user);
 
         // 리프레시 토큰 삭제
-        refreshTokenRepository.deleteByEmail(email); // deleteRefreshToken → deleteByEmail
+        refreshTokenRepository.deleteByEmail(email);
     }
 }

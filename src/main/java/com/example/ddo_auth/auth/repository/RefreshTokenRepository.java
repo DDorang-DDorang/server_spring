@@ -6,7 +6,8 @@ public interface RefreshTokenRepository {
     void save(String email, String token);
     Optional<String> findByEmail(String email);
     void deleteByEmail(String email);
-    boolean existsByEmailAndToken(String email, String token);
-    boolean existsByEmail(String email);
+    void     saveMapping(String token, String email);   // RT → email
+    void     deleteByToken(String token);
+    Optional<String> findEmailByToken(String token);
 }
 

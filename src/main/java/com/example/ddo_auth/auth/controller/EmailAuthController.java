@@ -5,10 +5,11 @@ import com.example.ddo_auth.auth.dto.SignupRequest;
 import com.example.ddo_auth.auth.dto.TokenResponse;
 import com.example.ddo_auth.auth.service.AuthService;
 import com.example.ddo_auth.auth.service.TokenService;
-import com.example.ddo_auth.mail.service.EmailService;
+import com.example.ddo_auth.common.ApiPaths;
 import com.example.ddo_auth.mail.service.VerificationCodeService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -17,11 +18,10 @@ import java.util.Map;
 
 @RestController
 @RequiredArgsConstructor
-@RequestMapping("/api/auth")
+@RequestMapping(ApiPaths.AUTH)
 public class EmailAuthController {
 
     private final AuthService authService;
-    private final EmailService emailService;
     private final VerificationCodeService verificationCodeService;
     private final TokenService tokenService;
 
@@ -31,39 +31,34 @@ public class EmailAuthController {
         return ResponseEntity.ok(tokens);
     }
 
-    @PostMapping("/refresh")
-    public ResponseEntity<?> refreshAccessToken(@RequestHeader("Authorization") String authorizationHeader) {
-        if (authorizationHeader == null || !authorizationHeader.startsWith("Bearer ")) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Refresh token missing or malformed.");
-        }
-
-        String refreshToken = authorizationHeader.substring(7); // "Bearer " 이후 문자열 추출
-        String newAccessToken = authService.reissueAccessToken(refreshToken);
-
-        return ResponseEntity.ok(Map.of("access_token", newAccessToken));
+    private String bearer(HttpHeaders h) {
+        String v = h.getFirst(HttpHeaders.AUTHORIZATION);
+        if (v == null || !v.startsWith("Bearer "))
+            throw new IllegalArgumentException("Refresh-Token 헤더가 없거나 형식이 잘못됐습니다.");
+        return v.substring(7);
     }
 
-    @PostMapping("/logout")
-    public ResponseEntity<?> logout(@RequestHeader("Authorization") String authorizationHeader) {
-        if (authorizationHeader == null || !authorizationHeader.startsWith("Bearer ")) {
-            return ResponseEntity.badRequest().body("Refresh token missing or malformed.");
-        }
+    @PostMapping(ApiPaths.TOKEN_REFRESH)
+    public ResponseEntity<?> refresh(@RequestHeader HttpHeaders headers) {
+        String rt = bearer(headers);
+        String newAT = authService.reissueAccessToken(rt);
+        return ResponseEntity.ok(Map.of("access_token", newAT));
+    }
 
-        String refreshToken = authorizationHeader.substring(7);
-        authService.logout(refreshToken);
-
+    @PostMapping(ApiPaths.TOKEN_LOGOUT)
+    public ResponseEntity<?> logout(@RequestHeader HttpHeaders headers) {
+        authService.logout(bearer(headers));
         return ResponseEntity.ok("로그아웃 되었습니다.");
     }
 
-    @PostMapping("/send-code")
+
+    @PostMapping("/email/code/signup")
     public ResponseEntity<Void> sendVerificationCode(@RequestBody Map<String, String> body) {
-        String email = body.get("email");
-        String code = verificationCodeService.createAndSaveCode(email);
-        emailService.sendEmailCode(email, code);
+        authService.requestSignupCode(body.get("email"));
         return ResponseEntity.ok().build();
     }
 
-    @PostMapping("/verify-email")
+    @PostMapping("/email/code/signup/verify")
     public ResponseEntity<?> verifyEmail(@RequestBody Map<String, String> body) {
         String email = body.get("email");
         String code = body.get("code");
@@ -82,15 +77,13 @@ public class EmailAuthController {
         return ResponseEntity.status(HttpStatus.CREATED).build();
     }
 
-    @PostMapping("/reset-password/request")
+    @PostMapping("/email/code/reset")
     public ResponseEntity<Void> requestPasswordReset(@RequestBody Map<String, String> body) {
-        String email = body.get("email");
-        String code = verificationCodeService.createAndSaveResetCode(email);
-        emailService.sendEmailCode(email, code);
+        authService.requestResetCode(body.get("email"));
         return ResponseEntity.ok().build();
     }
 
-    @PostMapping("/reset-password/verify")
+    @PostMapping("/email/code/reset/verify")
     public ResponseEntity<?> verifyResetCode(@RequestBody Map<String, String> body) {
         String email = body.get("email");
         String code = body.get("code");
@@ -102,7 +95,7 @@ public class EmailAuthController {
         return ResponseEntity.ok("인증 성공");
     }
 
-    @PostMapping("/reset-password/confirm")
+    @PatchMapping("/password/reset")
     public ResponseEntity<?> confirmNewPassword(@RequestBody Map<String, String> body) {
         String email = body.get("email");
         String newPassword = body.get("newPassword");

@@ -3,6 +3,7 @@ package com.example.ddo_auth.common.config;
 import com.example.ddo_auth.auth.config.CustomAuthorizationRequestResolver;
 import com.example.ddo_auth.auth.security.JwtAuthenticationFilter;
 import com.example.ddo_auth.auth.security.JwtTokenProvider;
+import com.example.ddo_auth.common.ApiPaths;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -34,7 +35,10 @@ public class SecurityConfig {
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/oauth2/**","/api/auth/**", "/api/test/**").permitAll()
+                        .requestMatchers(ApiPaths.AUTH + "/**",
+                                ApiPaths.OAUTH + "/**",
+                                "/test/**").permitAll()
+
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(new JwtAuthenticationFilter(jwtTokenProvider), UsernamePasswordAuthenticationFilter.class)

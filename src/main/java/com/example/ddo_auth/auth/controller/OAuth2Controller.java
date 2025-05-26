@@ -3,7 +3,9 @@ package com.example.ddo_auth.auth.controller;
 import com.example.ddo_auth.auth.entity.User;
 import com.example.ddo_auth.auth.service.OAuth2UserService;
 import com.example.ddo_auth.auth.service.TokenService;
+import com.example.ddo_auth.common.ApiPaths;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.client.OAuth2AuthorizedClient;
@@ -15,11 +17,19 @@ import java.io.IOException;
 import java.util.Map;
 
 @RestController
+@RequestMapping(ApiPaths.OAUTH)
 public class OAuth2Controller {
 
     private final OAuth2AuthorizedClientService clientService;
     private final OAuth2UserService oauth2UserService;
     private final TokenService tokenService;
+
+    private String bearer(HttpHeaders h) {
+        String v = h.getFirst(HttpHeaders.AUTHORIZATION);
+        if (v == null || !v.startsWith("Bearer "))
+            throw new IllegalArgumentException("Refresh-Token 헤더가 없거나 형식이 잘못됐습니다.");
+        return v.substring(7);
+    }
 
     public OAuth2Controller(OAuth2AuthorizedClientService clientService, 
                           OAuth2UserService oauth2UserService,
@@ -29,7 +39,7 @@ public class OAuth2Controller {
         this.tokenService = tokenService;
     }
 
-    @GetMapping("/api/oauth2/login/success")
+    @GetMapping("/login/success")
     public void loginSuccess(OAuth2AuthenticationToken authentication,
                              HttpServletResponse response) throws IOException {
         OAuth2AuthorizedClient client = clientService.loadAuthorizedClient(
@@ -50,28 +60,25 @@ public class OAuth2Controller {
         response.sendRedirect(redirectUrl);
     }
 
-    @PostMapping("/api/oauth2/refresh")
-    public ResponseEntity<?> refreshToken(@RequestHeader("X-Refresh-Token") String refreshToken,
-                                        @RequestParam String email) {
-        if (refreshToken == null || refreshToken.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing refresh token");
-        }
-
+    @PostMapping(ApiPaths.TOKEN_REFRESH)
+    public ResponseEntity<?> refresh(@RequestHeader HttpHeaders headers) {
+        String refresh = bearer(headers);            // Bearer 추출
         try {
-            String newAccessToken = tokenService.refreshAccessToken(refreshToken, email);
-            return ResponseEntity.ok(Map.of("access_token", newAccessToken));
+            String newAccess = tokenService.refreshAccessToken(refresh);
+            return ResponseEntity.ok(Map.of("access_token", newAccess));
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Refresh failed");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body("Refresh failed");
         }
     }
 
-    @PostMapping("/api/oauth2/logout")
-    public ResponseEntity<?> logout(@RequestParam String email) {
-        tokenService.removeRefreshToken(email);
+    @PostMapping(ApiPaths.TOKEN_LOGOUT)
+    public ResponseEntity<Void> logout(@RequestHeader HttpHeaders headers) {
+        tokenService.removeRefreshToken(bearer(headers));
         return ResponseEntity.ok().build();
     }
 
-    @GetMapping("/api/oauth2/validate")
+    @GetMapping("/validate")
     public ResponseEntity<?> validateToken(@RequestHeader("Authorization") String authHeader) {
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Missing or invalid token.");
@@ -86,7 +93,7 @@ public class OAuth2Controller {
         return ResponseEntity.ok("Token is valid");
     }
 
-    @DeleteMapping("/api/oauth2/withdraw")
+    @DeleteMapping("/withdraw")
     public ResponseEntity<?> withdrawUser(@RequestParam String email) {
         try {
             // 1. 리프레시 토큰 삭제

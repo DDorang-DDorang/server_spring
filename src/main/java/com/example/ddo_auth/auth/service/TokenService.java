@@ -25,48 +25,48 @@ public class TokenService {
     private String tokenUri;
 
     private final RestTemplate restTemplate = new RestTemplate();
-    private final RefreshTokenRepository refreshTokenRepository; // 인터페이스 사용
+    private final RefreshTokenRepository refreshTokenRepository;
 
     public void saveRefreshToken(String refreshToken, String email) {
         refreshTokenRepository.save(email, refreshToken);
+        refreshTokenRepository.saveMapping(refreshToken, email);
     }
 
-    public void removeRefreshToken(String email) {
+    public void removeRefreshToken(String refreshToken) {
+        String email = refreshTokenRepository.findEmailByToken(refreshToken)
+                .orElseThrow(() -> new RuntimeException("Unknown refresh token"));
+
         refreshTokenRepository.deleteByEmail(email);
+        refreshTokenRepository.deleteByToken(refreshToken);
     }
 
-    public String refreshAccessToken(String refreshToken, String email) {
-        if (!refreshTokenRepository.existsByEmailAndToken(email, refreshToken)) {
-            throw new RuntimeException("Invalid refresh token");
-        }
+    public String refreshAccessToken(String refreshToken) {
+        String email = refreshTokenRepository.findEmailByToken(refreshToken)
+                .orElseThrow(() -> new RuntimeException("Invalid refresh token"));
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
 
         MultiValueMap<String, String> params = new LinkedMultiValueMap<>();
-        params.add("client_id", clientId);
+        params.add("client_id",     clientId);
         params.add("client_secret", clientSecret);
-        params.add("grant_type", "refresh_token");
+        params.add("grant_type",    "refresh_token");
         params.add("refresh_token", refreshToken);
 
-        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(params, headers);
+        HttpEntity<MultiValueMap<String, String>> req = new HttpEntity<>(params, headers);
+        ResponseEntity<Map> resp = restTemplate.postForEntity(tokenUri, req, Map.class);
 
-        ResponseEntity<Map> response = restTemplate.postForEntity(tokenUri, request, Map.class);
+        if (resp.getStatusCode() != HttpStatus.OK)
+            throw new RuntimeException("Failed to refresh token: " + resp.getStatusCode());
 
-        if (response.getStatusCode() == HttpStatus.OK) {
-            Map body = response.getBody();
-            String newAccessToken = (String) body.get("access_token");
-            String newRefreshToken = (String) body.get("refresh_token");
+        Map body = resp.getBody();
+        String newAT  = (String) body.get("access_token");
+        String newRT  = (String) body.get("refresh_token");
 
-            // 새로운 리프레시 토큰이 있다면 저장
-            if (newRefreshToken != null) {
-                refreshTokenRepository.save(email, newRefreshToken);
-            }
-
-            return newAccessToken;
-        } else {
-            throw new RuntimeException("Failed to refresh token: " + response.getStatusCode());
+        if (newRT != null) {
+            saveRefreshToken(newRT, email);
         }
+        return newAT;
     }
 
     public boolean validateAccessTokenWithGoogle(String accessToken) {
