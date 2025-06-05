@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -40,11 +41,7 @@ public class FastApiService {
         try {
             // 1. MultipartFile을 임시 파일로 저장
             String originalFilename = videoFile.getOriginalFilename();
-            String suffix = "";
-            if (originalFilename != null && originalFilename.contains(".")) {
-                suffix = originalFilename.substring(originalFilename.lastIndexOf('.'));
-            }
-            tempFile = File.createTempFile("upload-", suffix);
+            tempFile = File.createTempFile("upload-", ".mp4");
             videoFile.transferTo(tempFile);
 
             // 2. WebClient로 multipart/form-data 전송

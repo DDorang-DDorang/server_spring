@@ -5,6 +5,8 @@ import com.example.ddorang.presentation.entity.Topic;
 import com.example.ddorang.presentation.repository.PresentationRepository;
 import com.example.ddorang.presentation.repository.TopicRepository;
 import com.example.ddorang.common.service.FileStorageService;
+import com.example.ddorang.presentation.service.FastApiService;
+import com.example.ddorang.presentation.service.VoiceAnalysisService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -13,6 +15,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -24,6 +27,8 @@ public class PresentationService {
     private final PresentationRepository presentationRepository;
     private final TopicRepository topicRepository;
     private final FileStorageService fileStorageService;
+    private final FastApiService fastApiService;
+    private final VoiceAnalysisService voiceAnalysisService;
     
     // 특정 토픽의 프레젠테이션 목록 조회
     public List<Presentation> getPresentationsByTopicId(UUID topicId) {
@@ -88,6 +93,22 @@ public class PresentationService {
         
         Presentation savedPresentation = presentationRepository.save(presentation);
         log.info("프레젠테이션 생성 완료: {}", savedPresentation.getId());
+
+        // 비디오 파일이 있는 경우 FastAPI 분석 수행
+        if (videoFile != null && !videoFile.isEmpty()) {
+            try {
+                log.info("FastAPI 분석 요청 시작");
+                Map<String, Object> analysisResult = fastApiService.analyzeVideo(videoFile);
+                log.info("FastAPI 분석 결과: {}", analysisResult);
+                
+                // 분석 결과 저장
+                voiceAnalysisService.saveAnalysisResults(savedPresentation.getId(), analysisResult);
+                log.info("분석 결과 저장 완료");
+            } catch (Exception e) {
+                log.error("FastAPI 분석 요청 실패: {}", e.getMessage());
+                // 분석 실패는 프레젠테이션 생성을 막지 않음
+            }
+        }
         
         return savedPresentation;
     }

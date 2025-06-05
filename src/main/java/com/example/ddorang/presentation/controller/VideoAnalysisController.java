@@ -112,10 +112,8 @@ public class VideoAnalysisController {
             SttResultResponse sttResult = voiceAnalysisService.getSttResult(presentationId);
 
             Map<String, Object> response = new HashMap<>();
-            response.put("presentationId", presentationId);
             response.put("voiceAnalysis", voiceAnalysis);
             response.put("sttResult", sttResult);
-            response.put("hasResults", voiceAnalysis != null && sttResult != null);
 
             return ResponseEntity.ok(response);
 
