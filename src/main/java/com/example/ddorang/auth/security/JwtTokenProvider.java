@@ -30,6 +30,8 @@ public class JwtTokenProvider {
     @Value("${jwt.refresh-token-expiration}")
     private long refreshTokenExpiration;
 
+    private final CustomUserDetailsService userDetailsService;
+
     @PostConstruct
     protected void init() {
         this.key = Keys.hmacShaKeyFor(secretKey.getBytes(StandardCharsets.UTF_8));
@@ -70,8 +72,6 @@ public class JwtTokenProvider {
         return claims.getSubject();
     }
 
-
-
     public String resolveToken(HttpServletRequest request) {
         String bearerToken = request.getHeader("Authorization");
         if (bearerToken != null && bearerToken.startsWith("Bearer ")) {
@@ -79,8 +79,6 @@ public class JwtTokenProvider {
         }
         return null;
     }
-
-    private final CustomUserDetailsService userDetailsService;
 
     public Authentication getAuthentication(String token) {
         String email = getUserEmailFromToken(token);

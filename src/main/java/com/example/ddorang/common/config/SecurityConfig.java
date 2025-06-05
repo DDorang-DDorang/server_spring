@@ -37,17 +37,21 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(ApiPaths.AUTH + "/**",
                                 ApiPaths.OAUTH + "/**",
-                                "/test/**").permitAll()
-
+                                "/test/**",
+                                "/api/**"
+                                ).permitAll()
                         .anyRequest().authenticated()
                 )
-                .addFilterBefore(new JwtAuthenticationFilter(jwtTokenProvider), UsernamePasswordAuthenticationFilter.class)
+                // OAuth2 로그인 설정을 JWT 필터보다 먼저 처리
                 .oauth2Login(oauth2 -> oauth2
                         .authorizationEndpoint(authEndpoint ->
                                 authEndpoint.authorizationRequestResolver(customAuthorizationRequestResolver)
                         )
                         .defaultSuccessUrl("/api/oauth2/login/success", true)
-                );
+                        .failureUrl("/api/oauth2/login/failure")
+                )
+                // JWT 필터 추가 (OAuth2 로그인 이후)
+                .addFilterBefore(new JwtAuthenticationFilter(jwtTokenProvider), UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
@@ -56,7 +60,7 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(Arrays.asList("http://localhost:3000"));
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         configuration.setAllowedHeaders(Arrays.asList("*"));
         configuration.setAllowCredentials(true);
         

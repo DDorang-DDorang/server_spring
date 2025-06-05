@@ -1,0 +1,149 @@
+package com.example.ddorang.presentation.controller;
+
+import com.example.ddorang.common.ApiPaths;
+import com.example.ddorang.presentation.entity.Topic;
+import com.example.ddorang.presentation.entity.Presentation;
+import com.example.ddorang.presentation.service.TopicService;
+import com.example.ddorang.presentation.service.PresentationService;
+import com.example.ddorang.presentation.dto.TopicResponse;
+import com.example.ddorang.presentation.dto.CreateTopicRequest;
+import com.example.ddorang.presentation.dto.UpdateTopicRequest;
+import com.example.ddorang.presentation.dto.PresentationResponse;
+import com.example.ddorang.auth.entity.User;
+import com.example.ddorang.auth.service.AuthService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.UUID;
+
+@RestController
+@RequestMapping(ApiPaths.ROOT)
+@RequiredArgsConstructor
+@Slf4j
+public class TopicController {
+    
+    private final TopicService topicService;
+    private final PresentationService presentationService;
+    private final AuthService authService;
+    
+    // 사용자의 모든 토픽 조회
+    @GetMapping("/topics")
+    public ResponseEntity<List<TopicResponse>> getTopics(@RequestParam String userId) {
+        log.info("토픽 목록 조회 요청 - 사용자: {}", userId);
+        
+        try {
+            User user = getUserByIdentifier(userId);
+            UUID userUuid = user.getUserId();
+            
+            List<Topic> privateTopics = topicService.getPrivateTopicsByUserId(userUuid);
+            List<Topic> teamTopics = topicService.getTeamTopicsByUserId(userUuid);
+            
+            List<TopicResponse> response = new java.util.ArrayList<>();
+            
+            // 개인 토픽 추가
+            privateTopics.forEach(topic -> {
+                long presentationCount = presentationService.getPresentationsByTopicId(topic.getId()).size();
+                response.add(TopicResponse.from(topic, presentationCount, false));
+            });
+            
+            // 팀 토픽 추가
+            teamTopics.forEach(topic -> {
+                long presentationCount = presentationService.getPresentationsByTopicId(topic.getId()).size();
+                response.add(TopicResponse.from(topic, presentationCount, true));
+            });
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("토픽 목록 조회 실패 - 사용자: {}, 오류: {}", userId, e.getMessage());
+            return ResponseEntity.badRequest().build();
+        }
+    }
+    
+    // 특정 토픽 조회
+    @GetMapping("/topics/{topicId}")
+    public ResponseEntity<TopicResponse> getTopic(@PathVariable UUID topicId) {
+        log.info("토픽 조회 요청 - ID: {}", topicId);
+        
+        Topic topic = topicService.getTopicById(topicId);
+        long presentationCount = presentationService.getPresentationsByTopicId(topic.getId()).size();
+        boolean isTeamTopic = topic.getTeam() != null;
+        
+        TopicResponse response = TopicResponse.from(topic, presentationCount, isTeamTopic);
+        return ResponseEntity.ok(response);
+    }
+    
+    // 특정 토픽의 프레젠테이션 목록 조회
+    @GetMapping("/topics/{topicId}/presentations")
+    public ResponseEntity<List<PresentationResponse>> getPresentations(@PathVariable UUID topicId) {
+        log.info("프레젠테이션 목록 조회 요청 - 토픽: {}", topicId);
+        
+        List<Presentation> presentations = presentationService.getPresentationsByTopicId(topicId);
+        List<PresentationResponse> response = presentations.stream()
+                .map(PresentationResponse::from)
+                .toList();
+        
+        return ResponseEntity.ok(response);
+    }
+    
+    // 새 토픽 생성
+    @PostMapping("/topics")
+    public ResponseEntity<TopicResponse> createTopic(@RequestBody CreateTopicRequest request) {
+        log.info("토픽 생성 요청 - 제목: {}, 사용자: {}", request.getTitle(), request.getUserId());
+        
+        try {
+            User user = getUserByIdentifier(request.getUserId());
+            
+            // 토픽 생성 (개인 토픽으로 생성, 팀은 null)
+            Topic topic = topicService.createTopic(request.getTitle(), user, null);
+            
+            // 응답 생성
+            TopicResponse response = TopicResponse.from(topic, 0L, false);
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("토픽 생성 실패 - 사용자: {}, 오류: {}", request.getUserId(), e.getMessage());
+            return ResponseEntity.badRequest().build();
+        }
+    }
+    
+    // 토픽 수정
+    @PutMapping("/topics/{topicId}")
+    public ResponseEntity<TopicResponse> updateTopic(
+            @PathVariable UUID topicId, 
+            @RequestBody UpdateTopicRequest request) {
+        log.info("토픽 수정 요청 - ID: {}, 새 제목: {}", topicId, request.getTitle());
+        
+        Topic topic = topicService.updateTopic(topicId, request.getTitle());
+        long presentationCount = presentationService.getPresentationsByTopicId(topic.getId()).size();
+        boolean isTeamTopic = topic.getTeam() != null;
+        
+        TopicResponse response = TopicResponse.from(topic, presentationCount, isTeamTopic);
+        return ResponseEntity.ok(response);
+    }
+    
+    // 토픽 삭제
+    @DeleteMapping("/topics/{topicId}")
+    public ResponseEntity<Void> deleteTopic(@PathVariable UUID topicId) {
+        log.info("토픽 삭제 요청 - ID: {}", topicId);
+        
+        topicService.deleteTopic(topicId);
+        
+        return ResponseEntity.ok().build();
+    }
+    
+    // UUID 또는 이메일로 사용자 조회하는 헬퍼 메서드
+    private User getUserByIdentifier(String identifier) {
+        try {
+            // UUID로 파싱 시도
+            UUID userId = UUID.fromString(identifier);
+            return authService.getUserById(userId);
+        } catch (IllegalArgumentException e) {
+            // UUID가 아니면 email로 간주
+            log.info("UUID가 아닌 식별자로 사용자 조회: {}", identifier);
+            return authService.getUserByEmail(identifier);
+        }
+    }
+} 

@@ -13,6 +13,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import java.util.UUID;
+
 @Service
 @RequiredArgsConstructor
 public class AuthService {
@@ -47,8 +49,14 @@ public class AuthService {
     public void signup(SignupRequest request) {
         String email = request.getEmail();
 
-        if (userRepository.findByEmail(email).isPresent()) {
-            throw new IllegalArgumentException("이미 가입된 이메일입니다.");
+        // 이미 가입된 사용자인지 확인
+        User existingUser = userRepository.findByEmail(email).orElse(null);
+        if (existingUser != null) {
+            if (existingUser.getProvider() == User.Provider.GOOGLE) {
+                throw new IllegalArgumentException("구글 계정으로 이미 가입된 이메일입니다. 구글 로그인을 이용해주세요.");
+            } else {
+                throw new IllegalArgumentException("이미 가입된 이메일입니다.");
+            }
         }
 
         if (!verificationCodeService.isEmailVerified(email)) {
@@ -70,6 +78,11 @@ public class AuthService {
     public TokenResponse login(EmailLoginRequest request) {
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 이메일입니다."));
+
+        // OAuth 사용자의 일반 로그인 시도 방지
+        if (user.getProvider() == User.Provider.GOOGLE) {
+            throw new IllegalArgumentException("구글 계정으로 가입한 사용자입니다. 구글 로그인을 이용해주세요.");
+        }
 
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             throw new IllegalArgumentException("비밀번호가 일치하지 않습니다.");
@@ -100,6 +113,22 @@ public class AuthService {
         return jwtTokenProvider.createAccessToken(email);
     }
 
+    public String reissueAccessTokenByEmail(String email) {
+        // Redis에서 이메일로 리프레시 토큰 조회
+        String refreshToken = refreshTokenRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalArgumentException("해당 이메일의 리프레시 토큰을 찾을 수 없습니다."));
+
+        // 리프레시 토큰 유효성 검사
+        if (!jwtTokenProvider.validateToken(refreshToken)) {
+            // 만료된 토큰이면 Redis에서 제거
+            refreshTokenRepository.deleteByEmail(email);
+            throw new IllegalArgumentException("리프레시 토큰이 만료되었습니다. 다시 로그인해주세요.");
+        }
+
+        // 새로운 액세스 토큰 생성
+        return jwtTokenProvider.createAccessToken(email);
+    }
+
     public void logout(String refreshToken) {
         if (!jwtTokenProvider.validateToken(refreshToken)) {
             throw new IllegalArgumentException("유효하지 않거나 만료된 리프레시 토큰입니다.");
@@ -107,6 +136,11 @@ public class AuthService {
 
         String email = jwtTokenProvider.getUserEmailFromToken(refreshToken);
         refreshTokenRepository.deleteByEmail(email); // deleteRefreshToken → deleteByEmail
+    }
+
+    public void logoutByEmail(String email) {
+        // 이메일로 Redis에서 리프레시 토큰 삭제
+        refreshTokenRepository.deleteByEmail(email);
     }
 
     //비밀번호 재설정
@@ -132,5 +166,17 @@ public class AuthService {
 
         // 리프레시 토큰 삭제
         refreshTokenRepository.deleteByEmail(email);
+    }
+
+    // 사용자 ID로 사용자 조회
+    public User getUserById(UUID userId) {
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 사용자입니다."));
+    }
+
+    // 이메일로 사용자 조회
+    public User getUserByEmail(String email) {
+        return userRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 이메일입니다."));
     }
 }
