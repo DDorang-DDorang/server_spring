@@ -42,37 +42,56 @@ public class OAuth2Controller {
     @GetMapping("/login/success")
     public void loginSuccess(OAuth2AuthenticationToken authentication,
                              HttpServletResponse response) throws IOException {
-        OAuth2AuthorizedClient client = clientService.loadAuthorizedClient(
-                authentication.getAuthorizedClientRegistrationId(),
-                authentication.getName());
-
-        User savedUser = oauth2UserService.processOAuth2User(authentication.getPrincipal());
-
-        // 리프레시 토큰 관련 로그 추가
-        System.out.println("=== OAuth2 로그인 성공 ===");
-        System.out.println("사용자 이메일: " + savedUser.getEmail());
-        System.out.println("액세스 토큰 존재: " + (client.getAccessToken() != null));
-        System.out.println("리프레시 토큰 존재: " + (client.getRefreshToken() != null));
-        
-        if (client.getRefreshToken() != null) {
-            System.out.println("리프레시 토큰 값: " + client.getRefreshToken().getTokenValue().substring(0, 20) + "...");
-            tokenService.saveRefreshToken(client.getRefreshToken().getTokenValue(), savedUser.getEmail());
-            System.out.println("리프레시 토큰 저장 완료");
-        } else {
-            System.out.println("경고: 리프레시 토큰이 없습니다!");
+        if (authentication == null) {
+            System.out.println("=== OAuth2 인증 실패: authentication 객체가 null입니다 ===");
+            response.sendRedirect("http://localhost:3000/oauth2/callback/google?error=auth_failed");
+            return;
         }
 
-        String accessToken = client.getAccessToken().getTokenValue();
-        System.out.println("액세스 토큰: " + accessToken.substring(0, 20) + "...");
+        try {
+            OAuth2AuthorizedClient client = clientService.loadAuthorizedClient(
+                    authentication.getAuthorizedClientRegistrationId(),
+                    authentication.getName());
 
-        // 사용자 정보도 함께 전달
-        String redirectUrl = "http://localhost:3000/oauth2/callback/google" +
-                "?token=" + accessToken +
-                "&email=" + java.net.URLEncoder.encode(savedUser.getEmail(), "UTF-8") +
-                "&name=" + java.net.URLEncoder.encode(savedUser.getName(), "UTF-8");
+            if (client == null) {
+                System.out.println("=== OAuth2 인증 실패: client 객체가 null입니다 ===");
+                response.sendRedirect("http://localhost:3000/oauth2/callback/google?error=client_failed");
+                return;
+            }
 
-        System.out.println("리다이렉트 URL: " + redirectUrl);
-        response.sendRedirect(redirectUrl);
+            User savedUser = oauth2UserService.processOAuth2User(authentication.getPrincipal());
+
+            // 리프레시 토큰 관련 로그 추가
+            System.out.println("=== OAuth2 로그인 성공 ===");
+            System.out.println("사용자 이메일: " + savedUser.getEmail());
+            System.out.println("액세스 토큰 존재: " + (client.getAccessToken() != null));
+            System.out.println("리프레시 토큰 존재: " + (client.getRefreshToken() != null));
+            
+            if (client.getRefreshToken() != null) {
+                System.out.println("리프레시 토큰 값: " + client.getRefreshToken().getTokenValue().substring(0, 20) + "...");
+                tokenService.saveRefreshToken(client.getRefreshToken().getTokenValue(), savedUser.getEmail());
+                System.out.println("리프레시 토큰 저장 완료");
+            } else {
+                System.out.println("경고: 리프레시 토큰이 없습니다!");
+            }
+
+            String accessToken = client.getAccessToken().getTokenValue();
+            System.out.println("액세스 토큰: " + accessToken.substring(0, 20) + "...");
+
+            // 사용자 정보도 함께 전달
+            String redirectUrl = "http://localhost:3000/oauth2/callback/google" +
+                    "?token=" + accessToken +
+                    "&email=" + java.net.URLEncoder.encode(savedUser.getEmail(), "UTF-8") +
+                    "&name=" + java.net.URLEncoder.encode(savedUser.getName(), "UTF-8");
+
+            System.out.println("리다이렉트 URL: " + redirectUrl);
+            response.sendRedirect(redirectUrl);
+        } catch (Exception e) {
+            System.out.println("=== OAuth2 로그인 처리 중 오류 발생 ===");
+            System.out.println("오류 메시지: " + e.getMessage());
+            e.printStackTrace();
+            response.sendRedirect("http://localhost:3000/oauth2/callback/google?error=server_error");
+        }
     }
 
     @PostMapping(ApiPaths.TOKEN_REFRESH)

@@ -13,6 +13,10 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizedClientRepository;
+import org.springframework.security.oauth2.client.web.reactive.function.client.ServletOAuth2AuthorizedClientExchangeFilterFunction;
+import org.springframework.web.reactive.function.client.WebClient;
 
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -24,9 +28,15 @@ import java.util.Arrays;
 public class SecurityConfig {
 
     private final JwtTokenProvider jwtTokenProvider;
+    private final ClientRegistrationRepository clientRegistrationRepository;
+    private final OAuth2AuthorizedClientRepository authorizedClientRepository;
 
-    public SecurityConfig(JwtTokenProvider jwtTokenProvider) {
+    public SecurityConfig(JwtTokenProvider jwtTokenProvider,
+                         ClientRegistrationRepository clientRegistrationRepository,
+                         OAuth2AuthorizedClientRepository authorizedClientRepository) {
         this.jwtTokenProvider = jwtTokenProvider;
+        this.clientRegistrationRepository = clientRegistrationRepository;
+        this.authorizedClientRepository = authorizedClientRepository;
     }
 
     @Bean
@@ -43,22 +53,33 @@ public class SecurityConfig {
                                 ).permitAll()
                         .anyRequest().authenticated()
                 )
-                // OAuth2 로그인 설정을 JWT 필터보다 먼저 처리
                 .oauth2Login(oauth2 -> oauth2
                         .authorizationEndpoint(authEndpoint ->
                                 authEndpoint.authorizationRequestResolver(customAuthorizationRequestResolver)
                         )
                         .defaultSuccessUrl("/api/oauth2/login/success", true)
                         .failureUrl("/api/oauth2/login/failure")
+                        .clientRegistrationRepository(clientRegistrationRepository)
+                        .authorizedClientRepository(authorizedClientRepository)
                 )
-                // JWT 필터 추가 (OAuth2 로그인 이후)
                 .addFilterBefore(new JwtAuthenticationFilter(jwtTokenProvider), UsernamePasswordAuthenticationFilter.class)
-                // 세션 관리 설정 추가
                 .sessionManagement(session -> session
-                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                        .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
                 );
 
         return http.build();
+    }
+
+    @Bean
+    public WebClient webClient() {
+        ServletOAuth2AuthorizedClientExchangeFilterFunction oauth2 =
+                new ServletOAuth2AuthorizedClientExchangeFilterFunction(
+                        clientRegistrationRepository,
+                        authorizedClientRepository);
+        oauth2.setDefaultOAuth2AuthorizedClient(true);
+        return WebClient.builder()
+                .apply(oauth2.oauth2Configuration())
+                .build();
     }
 
     @Bean
