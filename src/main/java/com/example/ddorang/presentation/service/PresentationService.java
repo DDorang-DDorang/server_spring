@@ -4,6 +4,8 @@ import com.example.ddorang.presentation.entity.Presentation;
 import com.example.ddorang.presentation.entity.Topic;
 import com.example.ddorang.presentation.repository.PresentationRepository;
 import com.example.ddorang.presentation.repository.TopicRepository;
+import com.example.ddorang.presentation.repository.VoiceAnalysisRepository;
+import com.example.ddorang.presentation.repository.SttResultRepository;
 import com.example.ddorang.common.service.FileStorageService;
 import com.example.ddorang.presentation.service.FastApiService;
 import com.example.ddorang.presentation.service.VoiceAnalysisService;
@@ -26,6 +28,8 @@ public class PresentationService {
     
     private final PresentationRepository presentationRepository;
     private final TopicRepository topicRepository;
+    private final VoiceAnalysisRepository voiceAnalysisRepository;
+    private final SttResultRepository sttResultRepository;
     private final FileStorageService fileStorageService;
     private final FastApiService fastApiService;
     private final VoiceAnalysisService voiceAnalysisService;
@@ -183,6 +187,20 @@ public class PresentationService {
         log.info("프레젠테이션 {} 삭제", presentationId);
         
         Presentation presentation = getPresentationById(presentationId);
+        
+        // 관련된 VoiceAnalysis 데이터 삭제
+        voiceAnalysisRepository.findByPresentationId(presentationId)
+                .ifPresent(voiceAnalysis -> {
+                    voiceAnalysisRepository.delete(voiceAnalysis);
+                    log.info("VoiceAnalysis 삭제 완료: {}", presentationId);
+                });
+        
+        // 관련된 SttResult 데이터 삭제
+        sttResultRepository.findByPresentationId(presentationId)
+                .ifPresent(sttResult -> {
+                    sttResultRepository.delete(sttResult);
+                    log.info("SttResult 삭제 완료: {}", presentationId);
+                });
         
         // 비디오 파일 삭제 (필요시)
         if (presentation.getVideoUrl() != null) {

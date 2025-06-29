@@ -4,6 +4,8 @@ import com.example.ddorang.presentation.entity.Topic;
 import com.example.ddorang.presentation.entity.Presentation;
 import com.example.ddorang.presentation.repository.TopicRepository;
 import com.example.ddorang.presentation.repository.PresentationRepository;
+import com.example.ddorang.presentation.repository.VoiceAnalysisRepository;
+import com.example.ddorang.presentation.repository.SttResultRepository;
 import com.example.ddorang.auth.entity.User;
 import com.example.ddorang.team.entity.Team;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +24,8 @@ public class TopicService {
     
     private final TopicRepository topicRepository;
     private final PresentationRepository presentationRepository;
+    private final VoiceAnalysisRepository voiceAnalysisRepository;
+    private final SttResultRepository sttResultRepository;
     
     // 사용자의 모든 토픽(프로젝트) 조회
     public List<Topic> getTopicsByUserId(UUID userId) {
@@ -83,13 +87,30 @@ public class TopicService {
         // 토픽에 속한 프레젠테이션들 먼저 삭제
         List<Presentation> presentations = presentationRepository.findByTopicId(topicId);
         for (Presentation presentation : presentations) {
+            UUID presentationId = presentation.getId();
+            
+            // 관련된 VoiceAnalysis 데이터 삭제
+            voiceAnalysisRepository.findByPresentationId(presentationId)
+                    .ifPresent(voiceAnalysis -> {
+                        voiceAnalysisRepository.delete(voiceAnalysis);
+                        log.info("VoiceAnalysis 삭제 완료: {}", presentationId);
+                    });
+            
+            // 관련된 SttResult 데이터 삭제
+            sttResultRepository.findByPresentationId(presentationId)
+                    .ifPresent(sttResult -> {
+                        sttResultRepository.delete(sttResult);
+                        log.info("SttResult 삭제 완료: {}", presentationId);
+                    });
+            
             // 비디오 파일 삭제 (필요시)
             if (presentation.getVideoUrl() != null) {
                 // TODO: 파일 삭제 로직 구현
-                log.info("프레젠테이션 {} 비디오 파일 삭제 예정: {}", presentation.getId(), presentation.getVideoUrl());
+                log.info("프레젠테이션 {} 비디오 파일 삭제 예정: {}", presentationId, presentation.getVideoUrl());
             }
+            
             presentationRepository.delete(presentation);
-            log.info("프레젠테이션 {} 삭제 완료", presentation.getId());
+            log.info("프레젠테이션 {} 삭제 완료", presentationId);
         }
         
         // 토픽 삭제
