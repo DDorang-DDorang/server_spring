@@ -143,31 +143,31 @@ public class EmailAuthController {
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                         .body(Map.of("error", "missing_token", "message", "인증 토큰이 필요합니다."));
             }
-            
+
             String token = authHeader.substring(7);
-            
+
             // 토큰 유효성 검사
             if (!jwtTokenProvider.validateToken(token)) {
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                         .body(Map.of("error", "invalid_token", "message", "유효하지 않은 토큰입니다."));
             }
-            
+
             // 토큰에서 이메일 추출
             String email = jwtTokenProvider.getUserEmailFromToken(token);
-            
+
             // 사용자 정보 조회
             User user = authService.getUserByEmail(email);
-            
+
             // 응답 DTO 생성
             UserInfoResponse userInfo = new UserInfoResponse(
-                user.getUserId(),
-                user.getEmail(),
-                user.getName(),
-                user.getProvider().toString()
+                    user.getUserId(),
+                    user.getEmail(),
+                    user.getName(),
+                    user.getProvider().toString()
             );
-            
+
             return ResponseEntity.ok(userInfo);
-            
+
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "internal_error", "message", "사용자 정보 조회 중 오류가 발생했습니다."));

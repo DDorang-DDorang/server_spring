@@ -3,6 +3,8 @@ package com.example.ddorang.presentation.entity;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -37,4 +39,8 @@ public class Presentation {
 
     @Column(name = "goal_time", length = 255)
     private String goalTime;
+
+    @OneToMany(mappedBy = "presentation", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<Comment> comments = new ArrayList<>();
 }

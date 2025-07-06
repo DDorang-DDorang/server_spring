@@ -207,8 +207,9 @@ public class PresentationService {
             // TODO: 파일 삭제 로직 구현
         }
         
+        // 프레젠테이션 삭제
         presentationRepository.delete(presentation);
-        log.info("프레젠테이션 삭제 완료: {}", presentationId);
+        log.info("프레젠테이션 및 관련 댓글 삭제 완료: {}", presentationId);
     }
 
     // 사용자의 모든 프레젠테이션 조회
