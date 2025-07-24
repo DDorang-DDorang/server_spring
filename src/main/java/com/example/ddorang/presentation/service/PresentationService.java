@@ -49,7 +49,7 @@ public class PresentationService {
     
     // 새 프레젠테이션 생성
     @Transactional
-    public Presentation createPresentation(UUID topicId, String title, String script, String goalTime, MultipartFile videoFile) {
+    public Presentation createPresentation(UUID topicId, String title, String script, Integer goalTime, MultipartFile videoFile) {
         log.info("새 프레젠테이션 생성: {} (토픽: {})", title, topicId);
         
         // 토픽 존재 확인
@@ -100,9 +100,10 @@ public class PresentationService {
 
         // 비디오 파일이 있는 경우 FastAPI 분석 수행
         if (videoFile != null && !videoFile.isEmpty()) {
+            Map<String, Object> analysisResult = null;
             try {
                 log.info("FastAPI 분석 요청 시작");
-                Map<String, Object> analysisResult = fastApiService.analyzeVideo(videoFile);
+                analysisResult = fastApiService.analyzeVideo(videoFile);
                 log.info("FastAPI 분석 결과: {}", analysisResult);
                 
                 // 분석 결과 저장
@@ -112,6 +113,32 @@ public class PresentationService {
                 log.error("FastAPI 분석 요청 실패: {}", e.getMessage());
                 // 분석 실패는 프레젠테이션 생성을 막지 않음
             }
+            
+            // 목표시간이 있고 대본이 있는 경우 대본 최적화도 함께 실행
+            if (goalTime != null && script != null && !script.trim().isEmpty() && analysisResult != null) {
+                try {
+                    log.info("목표시간이 설정되어 대본 최적화 시작: {}분", goalTime);
+                    Integer goalTimeSeconds = goalTime * 60; // 분 → 초 변환
+                    
+                    // 영상 분석 결과에서 실제 영상 길이 추출
+                    Integer currentDurationSeconds = fastApiService.extractDurationFromAnalysis(analysisResult);
+                    log.info("추출된 영상 길이: {}초", currentDurationSeconds);
+                    
+                    Map<String, Object> optimizeResult = fastApiService.optimizeScript(
+                        script, goalTimeSeconds, currentDurationSeconds);
+                    
+                    // 최적화된 대본으로 업데이트
+                    String optimizedScript = (String) optimizeResult.get("optimized_script");
+                    if (optimizedScript != null && !optimizedScript.trim().isEmpty()) {
+                        savedPresentation.setScript(optimizedScript);
+                        savedPresentation = presentationRepository.save(savedPresentation);
+                        log.info("대본 최적화 완료 및 저장됨");
+                    }
+                } catch (Exception e) {
+                    log.error("대본 최적화 실패: {}", e.getMessage());
+                    // 대본 최적화 실패해도 프레젠테이션 생성은 계속
+                }
+            }
         }
         
         return savedPresentation;
@@ -119,7 +146,7 @@ public class PresentationService {
     
     // 프레젠테이션 수정
     @Transactional
-    public Presentation updatePresentation(UUID presentationId, String title, String script, String goalTime) {
+    public Presentation updatePresentation(UUID presentationId, String title, String script, Integer goalTime) {
         log.info("프레젠테이션 {} 수정", presentationId);
         
         Presentation presentation = getPresentationById(presentationId);

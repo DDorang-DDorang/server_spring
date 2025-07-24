@@ -19,7 +19,6 @@ import java.util.Map;
 
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class FastApiService {
 
@@ -27,6 +26,12 @@ public class FastApiService {
     private String fastApiBaseUrl;
 
     private final ObjectMapper objectMapper;
+    private final WebClient webClient;
+
+    public FastApiService(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+        this.webClient = WebClient.builder().build();
+    }
 
     /**
      * FastAPI에 비디오 파일을 전송하여 음성 분석 수행 (WebClient 사용)
@@ -45,11 +50,10 @@ public class FastApiService {
             videoFile.transferTo(tempFile);
 
             // 2. WebClient로 multipart/form-data 전송
-            WebClient webClient = WebClient.builder()
+            String responseBody = webClient.mutate()
                     .baseUrl(fastApiBaseUrl)
-                    .build();
-
-            String responseBody = webClient.post()
+                    .build()
+                    .post()
                     .uri("/stt")
                     .contentType(MediaType.MULTIPART_FORM_DATA)
                     .body(BodyInserters.fromMultipartData("file", new FileSystemResource(tempFile)))
@@ -78,6 +82,55 @@ public class FastApiService {
     }
 
     /**
+     * FastAPI에 대본 최적화 요청 전송
+     */
+    public Map<String, Object> optimizeScript(String script, Integer goalTimeSeconds, Integer currentDurationSeconds) {
+        log.info("FastAPI 대본 최적화 요청 시작: 목표시간={}초, 현재시간={}초", 
+                goalTimeSeconds, currentDurationSeconds);
+
+        try {
+            // 요청 데이터 구성
+            Map<String, Object> requestData = new HashMap<>();
+            requestData.put("script", script);
+            requestData.put("goal_time_seconds", goalTimeSeconds);
+            requestData.put("current_duration_seconds", currentDurationSeconds);
+
+            // WebClient로 POST 요청 전송
+            String responseBody = webClient.mutate()
+                    .baseUrl(fastApiBaseUrl)
+                    .build()
+                    .post()
+                    .uri("/optimize-script")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(requestData)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+
+            log.info("FastAPI 대본 최적화 응답: {}", responseBody);
+
+            // 응답 파싱
+            return objectMapper.readValue(responseBody, new TypeReference<>() {});
+
+        } catch (Exception e) {
+            log.error("FastAPI 대본 최적화 통신 오류 발생", e);
+            return createMockOptimizeResult(script, goalTimeSeconds);
+        }
+    }
+
+    /**
+     * FastAPI 서버 연결 실패 시 사용할 목 대본 최적화 결과
+     */
+    private Map<String, Object> createMockOptimizeResult(String originalScript, Integer goalTimeSeconds) {
+        Map<String, Object> mockResult = new HashMap<>();
+        mockResult.put("optimized_script", originalScript + "\n\n[목 데이터] 대본이 " + goalTimeSeconds + "초에 맞게 최적화되었습니다. (실제 최적화는 FastAPI 서버 연결 후 가능)");
+        mockResult.put("optimization_notes", "FastAPI 서버(" + fastApiBaseUrl + ")에 연결하여 실제 LLM 기반 대본 최적화를 이용하세요.");
+        mockResult.put("estimated_duration_seconds", goalTimeSeconds);
+        log.info("목 대본 최적화 결과 생성 완료: 목표시간 {}초", goalTimeSeconds);
+        return mockResult;
+    }
+
+    /**
      * FastAPI 서버 연결 실패 시 사용할 목 분석 결과
      */
     private Map<String, Object> createMockAnalysisResult(String filename) {
@@ -93,7 +146,27 @@ public class FastApiService {
         mockResult.put("wpm_comment", "말하기 속도가 적당합니다. (목 데이터 - FastAPI 서버 연결 필요)");
         mockResult.put("transcription", "안녕하세요. 이것은 테스트용 목 데이터입니다. 실제 음성 인식 결과는 FastAPI 서버(" + fastApiBaseUrl + ") 연결 후 확인하실 수 있습니다.");
         mockResult.put("pronunciation_score", 0.75f);
+        mockResult.put("duration_seconds", 120); // Mock 데이터로 2분(120초) 설정
         log.info("목 분석 결과 생성 완료: {}", filename);
         return mockResult;
+    }
+
+    /**
+     * 영상 분석 결과에서 실제 영상 길이 추출
+     */
+    public Integer extractDurationFromAnalysis(Map<String, Object> analysisResult) {
+        if (analysisResult == null) {
+            return null;
+        }
+        
+        Object duration = analysisResult.get("duration_seconds");
+        if (duration instanceof Integer) {
+            return (Integer) duration;
+        } else if (duration instanceof Number) {
+            return ((Number) duration).intValue();
+        }
+        
+        log.warn("분석 결과에서 duration_seconds를 찾을 수 없습니다: {}", analysisResult.keySet());
+        return null;
     }
 }

@@ -19,7 +19,7 @@ public class PresentationResponse {
     private String title;
     private String script;
     private String videoUrl;
-    private String goalTime;
+    private Integer goalTime;
     private LocalDateTime createdAt;
     private UUID topicId;
     private String topicTitle;

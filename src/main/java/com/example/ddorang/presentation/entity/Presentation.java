@@ -37,8 +37,8 @@ public class Presentation {
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
-    @Column(name = "goal_time", length = 255)
-    private String goalTime;
+    @Column(name = "goal_time")
+    private Integer goalTime;
 
     @OneToMany(mappedBy = "presentation", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default

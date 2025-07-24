@@ -4,7 +4,6 @@ import com.example.ddorang.common.ApiPaths;
 import com.example.ddorang.presentation.entity.Presentation;
 import com.example.ddorang.presentation.service.PresentationService;
 import com.example.ddorang.presentation.dto.PresentationResponse;
-import com.example.ddorang.common.service.FileStorageService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,7 +21,6 @@ import java.util.UUID;
 public class PresentationController {
     
     private final PresentationService presentationService;
-    private final FileStorageService fileStorageService;
     private final ObjectMapper objectMapper;
     
     // 새 프레젠테이션 생성
@@ -170,7 +168,7 @@ public class PresentationController {
     public static class CreatePresentationRequest {
         private String title;
         private String script;
-        private String goalTime;
+        private Integer goalTime;
         private String type;
         private String originalFileName;
         private Integer duration;
@@ -180,8 +178,8 @@ public class PresentationController {
         public void setTitle(String title) { this.title = title; }
         public String getScript() { return script; }
         public void setScript(String script) { this.script = script; }
-        public String getGoalTime() { return goalTime; }
-        public void setGoalTime(String goalTime) { this.goalTime = goalTime; }
+        public Integer getGoalTime() { return goalTime; }
+        public void setGoalTime(Integer goalTime) { this.goalTime = goalTime; }
         public String getType() { return type; }
         public void setType(String type) { this.type = type; }
         public String getOriginalFileName() { return originalFileName; }
@@ -193,14 +191,14 @@ public class PresentationController {
     public static class UpdatePresentationRequest {
         private String title;
         private String script;
-        private String goalTime;
+        private Integer goalTime;
         
         // getters and setters
         public String getTitle() { return title; }
         public void setTitle(String title) { this.title = title; }
         public String getScript() { return script; }
         public void setScript(String script) { this.script = script; }
-        public String getGoalTime() { return goalTime; }
-        public void setGoalTime(String goalTime) { this.goalTime = goalTime; }
+        public Integer getGoalTime() { return goalTime; }
+        public void setGoalTime(Integer goalTime) { this.goalTime = goalTime; }
     }
 } 
