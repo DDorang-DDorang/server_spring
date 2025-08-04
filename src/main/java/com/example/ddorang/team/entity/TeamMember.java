@@ -28,8 +28,14 @@ public class TeamMember {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @Column(name = "role", length = 50)
-    private String role;
+    @Enumerated(EnumType.STRING)
+    @Column(name = "role", nullable = false)
+    @Builder.Default
+    private Role role = Role.MEMBER;
+
+    public enum Role {
+        OWNER, ADMIN, MEMBER
+    }
 
     @Column(name = "joined_at", nullable = false)
     private LocalDateTime joinedAt;
