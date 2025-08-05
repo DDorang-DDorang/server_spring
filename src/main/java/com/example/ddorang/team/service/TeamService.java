@@ -69,16 +69,11 @@ public class TeamService {
 
     @Transactional(readOnly = true)
     public List<TeamResponse> getUserTeams(UUID userId) {
-        List<Team> teams = teamRepository.findTeamsByUserId(userId);
+        // 한 번의 쿼리로 사용자의 팀 멤버십 정보와 팀 정보를 모두 가져옴
+        List<TeamMember> userTeamMembers = teamRepository.findTeamMembersByUserId(userId);
         
-        return teams.stream()
-                .map(team -> {
-                    TeamMember userMember = team.getMembers().stream()
-                            .filter(member -> member.getUser().getUserId().equals(userId))
-                            .findFirst()
-                            .orElse(null);
-                    return TeamResponse.from(team, userMember != null ? userMember.getRole() : null);
-                })
+        return userTeamMembers.stream()
+                .map(teamMember -> TeamResponse.from(teamMember.getTeam(), teamMember.getRole()))
                 .toList();
     }
 

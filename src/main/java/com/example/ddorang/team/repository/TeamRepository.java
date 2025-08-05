@@ -14,5 +14,8 @@ public interface TeamRepository extends JpaRepository<Team, UUID> {
     @Query("SELECT DISTINCT t FROM Team t JOIN FETCH t.members tm JOIN FETCH tm.user WHERE tm.user.userId = :userId ORDER BY t.createdAt DESC")
     List<Team> findTeamsByUserId(UUID userId);
     
+    @Query("SELECT tm FROM TeamMember tm JOIN FETCH tm.team t JOIN FETCH tm.user u WHERE tm.user.userId = :userId ORDER BY t.createdAt DESC")
+    List<com.example.ddorang.team.entity.TeamMember> findTeamMembersByUserId(UUID userId);
+    
     List<Team> findByNameContainingIgnoreCaseOrderByCreatedAtDesc(String name);
 }
