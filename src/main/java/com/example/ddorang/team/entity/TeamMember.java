@@ -34,7 +34,7 @@ public class TeamMember {
     private Role role = Role.MEMBER;
 
     public enum Role {
-        OWNER, ADMIN, MEMBER
+        OWNER, MEMBER
     }
 
     @Column(name = "joined_at", nullable = false)

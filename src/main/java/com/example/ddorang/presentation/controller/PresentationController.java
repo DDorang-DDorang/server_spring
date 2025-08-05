@@ -87,15 +87,22 @@ public class PresentationController {
         }
     }
     
-    // 프레젠테이션 수정
+    // 프레젠테이션 수정 (권한 확인)
     @PutMapping("/presentations/{presentationId}")
     public ResponseEntity<PresentationResponse> updatePresentation(
             @PathVariable UUID presentationId,
+            @RequestHeader("X-User-Id") UUID userId,
             @RequestBody UpdatePresentationRequest request) {
         
-        log.info("프레젠테이션 수정 요청 - ID: {}", presentationId);
+        log.info("프레젠테이션 수정 요청 - ID: {}, 사용자: {}", presentationId, userId);
         
         try {
+            // 권한 확인
+            if (!presentationService.canModifyPresentation(presentationId, userId)) {
+                log.error("프레젠테이션 수정 권한 없음 - ID: {}, 사용자: {}", presentationId, userId);
+                return ResponseEntity.status(403).build();
+            }
+            
             Presentation presentation = presentationService.updatePresentation(
                     presentationId,
                     request.getTitle(),
@@ -111,12 +118,21 @@ public class PresentationController {
         }
     }
     
-    // 프레젠테이션 삭제
+    // 프레젠테이션 삭제 (권한 확인)
     @DeleteMapping("/presentations/{presentationId}")
-    public ResponseEntity<Void> deletePresentation(@PathVariable UUID presentationId) {
-        log.info("프레젠테이션 삭제 요청 - ID: {}", presentationId);
+    public ResponseEntity<Void> deletePresentation(
+            @PathVariable UUID presentationId,
+            @RequestHeader("X-User-Id") UUID userId) {
+        
+        log.info("프레젠테이션 삭제 요청 - ID: {}, 사용자: {}", presentationId, userId);
         
         try {
+            // 권한 확인
+            if (!presentationService.canModifyPresentation(presentationId, userId)) {
+                log.error("프레젠테이션 삭제 권한 없음 - ID: {}, 사용자: {}", presentationId, userId);
+                return ResponseEntity.status(403).build();
+            }
+            
             presentationService.deletePresentation(presentationId);
             return ResponseEntity.ok().build();
         } catch (Exception e) {

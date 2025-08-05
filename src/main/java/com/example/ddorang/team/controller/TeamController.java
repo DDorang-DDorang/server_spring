@@ -191,6 +191,29 @@ public class TeamController {
         }
     }
 
+    @PutMapping("/{teamId}")
+    public ResponseEntity<TeamResponse> updateTeam(
+            @PathVariable UUID teamId,
+            @RequestHeader("X-User-Id") UUID userId,
+            @Valid @RequestBody TeamUpdateRequest request) {
+        
+        log.info("팀 정보 수정 요청 - 팀: {}, 사용자: {}, 새 이름: {}", teamId, userId, request.getName());
+        
+        try {
+            TeamResponse response = teamService.updateTeam(teamId, userId, request.getName());
+            return ResponseEntity.ok(response);
+        } catch (IllegalArgumentException e) {
+            log.error("팀 정보 수정 실패 - 잘못된 인수: {}", e.getMessage());
+            return ResponseEntity.badRequest().build();
+        } catch (SecurityException e) {
+            log.error("팀 정보 수정 실패 - 권한 없음: {}", e.getMessage());
+            return ResponseEntity.status(403).build();
+        } catch (Exception e) {
+            log.error("팀 정보 수정 실패: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
     @DeleteMapping("/{teamId}")
     public ResponseEntity<Void> deleteTeam(
             @PathVariable UUID teamId,

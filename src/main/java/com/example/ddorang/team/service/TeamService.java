@@ -7,6 +7,13 @@ import com.example.ddorang.team.entity.Team;
 import com.example.ddorang.team.entity.TeamMember;
 import com.example.ddorang.team.repository.TeamMemberRepository;
 import com.example.ddorang.team.repository.TeamRepository;
+import com.example.ddorang.presentation.entity.Topic;
+import com.example.ddorang.presentation.entity.Presentation;
+import com.example.ddorang.presentation.repository.TopicRepository;
+import com.example.ddorang.presentation.repository.PresentationRepository;
+import com.example.ddorang.presentation.repository.CommentRepository;
+import com.example.ddorang.presentation.repository.VoiceAnalysisRepository;
+import com.example.ddorang.presentation.repository.SttResultRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -27,6 +34,11 @@ public class TeamService {
     private final TeamMemberRepository teamMemberRepository;
     private final UserRepository userRepository;
     private final InviteService inviteService;
+    private final TopicRepository topicRepository;
+    private final PresentationRepository presentationRepository;
+    private final CommentRepository commentRepository;
+    private final VoiceAnalysisRepository voiceAnalysisRepository;
+    private final SttResultRepository sttResultRepository;
     
     @Value("${app.base-url:http://localhost:8080}")
     private String baseUrl;
@@ -99,8 +111,8 @@ public class TeamService {
         TeamMember member = teamMemberRepository.findByTeamAndUser(team, user)
                 .orElseThrow(() -> new SecurityException("팀 멤버가 아닙니다"));
 
-        if (member.getRole() == TeamMember.Role.MEMBER) {
-            throw new SecurityException("초대링크 생성 권한이 없습니다");
+        if (member.getRole() != TeamMember.Role.OWNER) {
+            throw new SecurityException("팀장만 초대링크를 생성할 수 있습니다");
         }
 
         String inviteCode = inviteService.createInvite(teamId);
@@ -158,8 +170,8 @@ public class TeamService {
         TeamMember targetMember = teamMemberRepository.findByTeamAndUser(team, targetUser)
                 .orElseThrow(() -> new IllegalArgumentException("대상 사용자가 팀 멤버가 아닙니다"));
 
-        if (requestMember.getRole() == TeamMember.Role.MEMBER) {
-            throw new SecurityException("멤버를 제거할 권한이 없습니다");
+        if (requestMember.getRole() != TeamMember.Role.OWNER) {
+            throw new SecurityException("팀장만 멤버를 제거할 수 있습니다");
         }
 
         if (targetMember.getRole() == TeamMember.Role.OWNER) {
@@ -183,6 +195,11 @@ public class TeamService {
             long memberCount = teamMemberRepository.countByTeam(team);
             if (memberCount > 1) {
                 throw new IllegalStateException("팀에 다른 멤버가 있을 때 소유자는 팀을 떠날 수 없습니다");
+            } else {
+                // 팀장이 혼자 남았을 때는 팀을 자동 삭제
+                log.info("팀장이 혼자 남아 팀을 떠나므로 팀을 자동 삭제합니다 - 팀: {}, 사용자: {}", teamId, userId);
+                deleteTeam(teamId, userId);
+                return;
             }
         }
 
@@ -194,6 +211,26 @@ public class TeamService {
         // Redis 기반 초대 시스템에서는 활성 초대 링크 목록 조회 기능 제거
         // 필요 시 별도의 관리 인터페이스로 구현 가능
         throw new UnsupportedOperationException("초대 링크 목록 조회는 지원되지 않습니다");
+    }
+
+    public TeamResponse updateTeam(UUID teamId, UUID userId, String newName) {
+        Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> new IllegalArgumentException("팀을 찾을 수 없습니다"));
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다"));
+
+        TeamMember member = teamMemberRepository.findByTeamAndUser(team, user)
+                .orElseThrow(() -> new SecurityException("팀 멤버가 아닙니다"));
+
+        if (member.getRole() != TeamMember.Role.OWNER) {
+            throw new SecurityException("팀장만 팀 정보를 수정할 수 있습니다");
+        }
+
+        team.setName(newName);
+        team = teamRepository.save(team);
+
+        return TeamResponse.from(team, TeamMember.Role.OWNER);
     }
 
     public void deleteTeam(UUID teamId, UUID userId) {
@@ -210,13 +247,41 @@ public class TeamService {
             throw new SecurityException("팀 소유자만 팀을 삭제할 수 있습니다");
         }
 
-        // 팀에 속한 모든 멤버 삭제 (CASCADE로 자동 삭제되지만 명시적으로 처리)
+        // 1. 팀의 모든 토픽 조회
+        List<Topic> teamTopics = topicRepository.findByTeamIdOrderByTitle(team.getId());
+        
+        // 2. 각 토픽의 프레젠테이션들과 관련 데이터 삭제
+        for (Topic topic : teamTopics) {
+            List<Presentation> presentations = presentationRepository.findByTopicId(topic.getId());
+            
+            for (Presentation presentation : presentations) {
+                // 2-1. AI 분석 결과 삭제
+                voiceAnalysisRepository.findByPresentationId(presentation.getId())
+                    .ifPresent(voiceAnalysisRepository::delete);
+                sttResultRepository.findByPresentationId(presentation.getId())
+                    .ifPresent(sttResultRepository::delete);
+                
+                // 2-2. 댓글 삭제 (CASCADE DELETE로 자동 삭제)
+                // commentRepository는 Presentation 삭제 시 자동으로 삭제
+                
+                log.info("프레젠테이션 관련 데이터 삭제: {}", presentation.getId());
+            }
+            
+            // 2-3. 프레젠테이션 삭제
+            presentationRepository.deleteAll(presentations);
+        }
+        
+        // 3. 토픽 삭제
+        topicRepository.deleteAll(teamTopics);
+        
+        // 4. 팀 멤버 삭제
         teamMemberRepository.deleteAll(teamMemberRepository.findByTeamOrderByJoinedAtAsc(team));
         
-        // 팀 삭제
+        // 5. 팀 삭제
         teamRepository.delete(team);
         
-        log.info("팀 삭제 완료 - 팀: {}, 삭제자: {}", teamId, userId);
+        log.info("팀 및 관련 데이터 삭제 완료 - 팀: {}, 토픽: {}개, 삭제자: {}", 
+                team.getName(), teamTopics.size(), userId);
     }
 
 }

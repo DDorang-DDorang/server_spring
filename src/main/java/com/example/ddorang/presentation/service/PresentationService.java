@@ -352,12 +352,11 @@ public class PresentationService {
                 return true;
             }
             
-            // 팀 관리자인지 확인
+            // 팀장인지 확인
             TeamMember member = teamMemberRepository.findByTeamAndUser(topic.getTeam(), user)
                     .orElse(null);
             
-            return member != null && 
-                   (member.getRole() == TeamMember.Role.OWNER || member.getRole() == TeamMember.Role.ADMIN);
+            return member != null && member.getRole() == TeamMember.Role.OWNER;
         } catch (Exception e) {
             log.error("프레젠테이션 수정 권한 확인 실패: {}", e.getMessage());
             return false;

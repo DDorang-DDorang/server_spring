@@ -22,8 +22,8 @@ public interface TeamMemberRepository extends JpaRepository<TeamMember, UUID> {
     
     boolean existsByTeamAndUser(Team team, User user);
     
-    @Query("SELECT tm FROM TeamMember tm WHERE tm.team = :team AND tm.role IN ('OWNER', 'ADMIN')")
-    List<TeamMember> findTeamAdmins(Team team);
+    @Query("SELECT tm FROM TeamMember tm WHERE tm.team = :team AND tm.role = 'OWNER'")
+    List<TeamMember> findTeamOwners(Team team);
     
     @Query("SELECT COUNT(tm) FROM TeamMember tm WHERE tm.team = :team")
     long countByTeam(Team team);
