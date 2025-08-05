@@ -22,16 +22,22 @@ public class InviteService {
     private static final Duration INVITE_TTL = Duration.ofHours(24);
 
     public String createInvite(UUID teamId) {
-        String inviteCode = generateUniqueInviteCode();
-        String key = INVITE_KEY_PREFIX + inviteCode;
-        
-        redisTemplate.opsForValue().set(key, teamId.toString(), INVITE_TTL);
+        String inviteCode = generateUniqueInviteCode(teamId);
         
         log.info("초대 코드 생성: {} -> 팀 ID: {}, TTL: {}시간", inviteCode, teamId, INVITE_TTL.toHours());
         return inviteCode;
     }
 
     public UUID getTeamIdByInviteCode(String inviteCode) {
+        // 입력 검증
+        if (inviteCode == null || inviteCode.trim().isEmpty()) {
+            throw new IllegalArgumentException("초대 코드가 필요합니다");
+        }
+        
+        if (inviteCode.length() != 8) {
+            throw new IllegalArgumentException("잘못된 초대 코드 형식입니다");
+        }
+        
         String key = INVITE_KEY_PREFIX + inviteCode;
         String teamIdStr = redisTemplate.opsForValue().get(key);
         
@@ -76,31 +82,27 @@ public class InviteService {
         return Duration.ofSeconds(ttlSeconds);
     }
 
-    private String generateUniqueInviteCode() {
+    private String generateUniqueInviteCode(UUID teamId) {
         int maxRetries = 10;
         
         for (int attempt = 0; attempt < maxRetries; attempt++) {
             String inviteCode = generateInviteCode();
             String key = INVITE_KEY_PREFIX + inviteCode;
             
-            // Redis에 해당 키가 존재하지 않으면 중복되지 않음
-            if (!redisTemplate.hasKey(key)) {
+            // 바로 실제 값으로 설정 - 1번의 원자적 연산으로 끝!
+            Boolean success = redisTemplate.opsForValue()
+                .setIfAbsent(key, teamId.toString(), INVITE_TTL);
+                
+            if (Boolean.TRUE.equals(success)) {
                 log.debug("유니크한 초대 코드 생성 성공: {} (시도 횟수: {})", inviteCode, attempt + 1);
-                return inviteCode;
+                return inviteCode; // 성공! 실제 키도 이미 설정됨
             }
             
             log.debug("초대 코드 중복 발생: {} (시도 횟수: {})", inviteCode, attempt + 1);
+            // 실패하면 다른 코드로 재시도
         }
         
-        // 최대 재시도 횟수 초과 시 타임스탬프 추가로 유니크성 보장
-        String fallbackCode = generateInviteCode() + String.valueOf(System.currentTimeMillis() % 1000);
-        // 8자리 제한 때문에 뒤의 3자리만 사용
-        if (fallbackCode.length() > 8) {
-            fallbackCode = fallbackCode.substring(0, 8);
-        }
-        
-        log.warn("초대 코드 중복 해결을 위해 fallback 코드 사용: {}", fallbackCode);
-        return fallbackCode;
+        throw new RuntimeException("초대 코드 생성 실패: 최대 재시도 횟수(" + maxRetries + ") 초과");
     }
 
     private String generateInviteCode() {
