@@ -79,14 +79,8 @@ public class TeamService {
 
     @Transactional(readOnly = true)
     public TeamResponse getTeamById(UUID teamId, UUID userId) {
-        Team team = teamRepository.findById(teamId)
-                .orElseThrow(() -> new IllegalArgumentException("팀을 찾을 수 없습니다"));
-        
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다"));
-
-        TeamMember member = teamMemberRepository.findByTeamAndUser(team, user)
-                .orElseThrow(() -> new SecurityException("팀 멤버가 아닙니다"));
+        TeamMember member = validateTeamMember(teamId, userId);
+        Team team = member.getTeam();
 
         List<TeamMemberResponse> members = teamMemberRepository.findByTeamOrderByJoinedAtAsc(team)
                 .stream()
@@ -97,18 +91,8 @@ public class TeamService {
     }
 
     public TeamInviteResponse createInvite(UUID teamId, UUID userId, CreateInviteRequest request) {
-        Team team = teamRepository.findById(teamId)
-                .orElseThrow(() -> new IllegalArgumentException("팀을 찾을 수 없습니다"));
-        
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다"));
-
-        TeamMember member = teamMemberRepository.findByTeamAndUser(team, user)
-                .orElseThrow(() -> new SecurityException("팀 멤버가 아닙니다"));
-
-        if (member.getRole() != TeamMember.Role.OWNER) {
-            throw new SecurityException("팀장만 초대링크를 생성할 수 있습니다");
-        }
+        TeamMember owner = validateTeamOwner(teamId, userId);
+        Team team = owner.getTeam();
 
         String inviteCode = inviteService.createInvite(teamId);
         
@@ -150,24 +134,18 @@ public class TeamService {
     }
 
     public void removeMember(UUID teamId, UUID targetUserId, UUID requestUserId) {
-        Team team = teamRepository.findById(teamId)
-                .orElseThrow(() -> new IllegalArgumentException("팀을 찾을 수 없습니다"));
-
-        User requestUser = userRepository.findById(requestUserId)
-                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다"));
-
+        // 요청자는 팀장이어야 함  
+        validateTeamOwner(teamId, requestUserId);
+        
+        // 대상 사용자 확인
         User targetUser = userRepository.findById(targetUserId)
                 .orElseThrow(() -> new IllegalArgumentException("대상 사용자를 찾을 수 없습니다"));
 
-        TeamMember requestMember = teamMemberRepository.findByTeamAndUser(team, requestUser)
-                .orElseThrow(() -> new SecurityException("팀 멤버가 아닙니다"));
+        Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> new IllegalArgumentException("팀을 찾을 수 없습니다"));
 
         TeamMember targetMember = teamMemberRepository.findByTeamAndUser(team, targetUser)
                 .orElseThrow(() -> new IllegalArgumentException("대상 사용자가 팀 멤버가 아닙니다"));
-
-        if (requestMember.getRole() != TeamMember.Role.OWNER) {
-            throw new SecurityException("팀장만 멤버를 제거할 수 있습니다");
-        }
 
         if (targetMember.getRole() == TeamMember.Role.OWNER) {
             throw new SecurityException("소유자는 제거할 수 없습니다");
@@ -177,14 +155,8 @@ public class TeamService {
     }
 
     public void leaveTeam(UUID teamId, UUID userId) {
-        Team team = teamRepository.findById(teamId)
-                .orElseThrow(() -> new IllegalArgumentException("팀을 찾을 수 없습니다"));
-
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다"));
-
-        TeamMember member = teamMemberRepository.findByTeamAndUser(team, user)
-                .orElseThrow(() -> new SecurityException("팀 멤버가 아닙니다"));
+        TeamMember member = validateTeamMember(teamId, userId);
+        Team team = member.getTeam();
 
         if (member.getRole() == TeamMember.Role.OWNER) {
             long memberCount = teamMemberRepository.countByTeam(team);
@@ -209,18 +181,8 @@ public class TeamService {
     }
 
     public TeamResponse updateTeam(UUID teamId, UUID userId, String newName) {
-        Team team = teamRepository.findById(teamId)
-                .orElseThrow(() -> new IllegalArgumentException("팀을 찾을 수 없습니다"));
-
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다"));
-
-        TeamMember member = teamMemberRepository.findByTeamAndUser(team, user)
-                .orElseThrow(() -> new SecurityException("팀 멤버가 아닙니다"));
-
-        if (member.getRole() != TeamMember.Role.OWNER) {
-            throw new SecurityException("팀장만 팀 정보를 수정할 수 있습니다");
-        }
+        TeamMember owner = validateTeamOwner(teamId, userId);
+        Team team = owner.getTeam();
 
         team.setName(newName);
         team = teamRepository.save(team);
@@ -229,18 +191,8 @@ public class TeamService {
     }
 
     public void deleteTeam(UUID teamId, UUID userId) {
-        Team team = teamRepository.findById(teamId)
-                .orElseThrow(() -> new IllegalArgumentException("팀을 찾을 수 없습니다"));
-
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다"));
-
-        TeamMember member = teamMemberRepository.findByTeamAndUser(team, user)
-                .orElseThrow(() -> new SecurityException("팀 멤버가 아닙니다"));
-
-        if (member.getRole() != TeamMember.Role.OWNER) {
-            throw new SecurityException("팀 소유자만 팀을 삭제할 수 있습니다");
-        }
+        TeamMember owner = validateTeamOwner(teamId, userId);
+        Team team = owner.getTeam();
 
         // 1. 팀의 모든 토픽 조회
         List<Topic> teamTopics = topicRepository.findByTeamIdOrderByTitle(team.getId());
@@ -278,5 +230,28 @@ public class TeamService {
         log.info("팀 및 관련 데이터 삭제 완료 - 팀: {}, 토픽: {}개, 삭제자: {}", 
                 team.getName(), teamTopics.size(), userId);
     }
+
+    // 권한 검증 헬퍼 메서드들
+    private TeamMember validateTeamMember(UUID teamId, UUID userId) {
+        Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> new IllegalArgumentException("팀을 찾을 수 없습니다"));
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다"));
+
+        return teamMemberRepository.findByTeamAndUser(team, user)
+                .orElseThrow(() -> new SecurityException("팀 멤버가 아닙니다"));
+    }
+
+    private TeamMember validateTeamOwner(UUID teamId, UUID userId) {
+        TeamMember member = validateTeamMember(teamId, userId);
+        
+        if (member.getRole() != TeamMember.Role.OWNER) {
+            throw new SecurityException("팀장만 수행할 수 있는 작업입니다");
+        }
+        
+        return member;
+    }
+
 
 }

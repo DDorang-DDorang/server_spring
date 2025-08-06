@@ -27,16 +27,8 @@ public class TeamController {
         
         log.info("팀 생성 요청 - 사용자: {}, 팀명: {}", userId, request.getName());
         
-        try {
-            TeamResponse response = teamService.createTeam(userId, request);
-            return ResponseEntity.ok(response);
-        } catch (IllegalArgumentException e) {
-            log.error("팀 생성 실패 - 잘못된 인수: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
-        } catch (Exception e) {
-            log.error("팀 생성 실패: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
-        }
+        TeamResponse response = teamService.createTeam(userId, request);
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping
@@ -45,13 +37,8 @@ public class TeamController {
         
         log.info("사용자 팀 목록 조회 - 사용자: {}", userId);
         
-        try {
-            List<TeamResponse> teams = teamService.getUserTeams(userId);
-            return ResponseEntity.ok(teams);
-        } catch (Exception e) {
-            log.error("팀 목록 조회 실패: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
-        }
+        List<TeamResponse> teams = teamService.getUserTeams(userId);
+        return ResponseEntity.ok(teams);
     }
 
     @GetMapping("/{teamId}")
@@ -61,19 +48,8 @@ public class TeamController {
         
         log.info("팀 상세 조회 - 팀: {}, 사용자: {}", teamId, userId);
         
-        try {
-            TeamResponse response = teamService.getTeamById(teamId, userId);
-            return ResponseEntity.ok(response);
-        } catch (IllegalArgumentException e) {
-            log.error("팀 조회 실패 - 잘못된 인수: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
-        } catch (SecurityException e) {
-            log.error("팀 조회 실패 - 권한 없음: {}", e.getMessage());
-            return ResponseEntity.status(403).build();
-        } catch (Exception e) {
-            log.error("팀 조회 실패: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
-        }
+        TeamResponse response = teamService.getTeamById(teamId, userId);
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/{teamId}/invites")
@@ -84,19 +60,8 @@ public class TeamController {
         
         log.info("초대링크 생성 - 팀: {}, 사용자: {}", teamId, userId);
         
-        try {
-            TeamInviteResponse response = teamService.createInvite(teamId, userId, request);
-            return ResponseEntity.ok(response);
-        } catch (IllegalArgumentException e) {
-            log.error("초대링크 생성 실패 - 잘못된 인수: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
-        } catch (SecurityException e) {
-            log.error("초대링크 생성 실패 - 권한 없음: {}", e.getMessage());
-            return ResponseEntity.status(403).build();
-        } catch (Exception e) {
-            log.error("초대링크 생성 실패: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
-        }
+        TeamInviteResponse response = teamService.createInvite(teamId, userId, request);
+        return ResponseEntity.ok(response);
     }
 
     @GetMapping("/{teamId}/invites")
@@ -106,19 +71,8 @@ public class TeamController {
         
         log.info("팀 초대링크 조회 - 팀: {}, 사용자: {}", teamId, userId);
         
-        try {
-            List<TeamInviteResponse> invites = teamService.getTeamInvites(teamId, userId);
-            return ResponseEntity.ok(invites);
-        } catch (IllegalArgumentException e) {
-            log.error("초대링크 조회 실패 - 잘못된 인수: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
-        } catch (SecurityException e) {
-            log.error("초대링크 조회 실패 - 권한 없음: {}", e.getMessage());
-            return ResponseEntity.status(403).build();
-        } catch (Exception e) {
-            log.error("초대링크 조회 실패: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
-        }
+        List<TeamInviteResponse> invites = teamService.getTeamInvites(teamId, userId);
+        return ResponseEntity.ok(invites);
     }
 
     @PostMapping("/join/{inviteCode}")
@@ -128,19 +82,8 @@ public class TeamController {
         
         log.info("팀 참가 요청 - 초대코드: {}, 사용자: {}", inviteCode, userId);
         
-        try {
-            TeamResponse response = teamService.joinTeamByInvite(inviteCode, userId);
-            return ResponseEntity.ok(response);
-        } catch (IllegalArgumentException e) {
-            log.error("팀 참가 실패 - 잘못된 인수: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
-        } catch (IllegalStateException e) {
-            log.error("팀 참가 실패 - 상태 오류: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
-        } catch (Exception e) {
-            log.error("팀 참가 실패: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
-        }
+        TeamResponse response = teamService.joinTeamByInvite(inviteCode, userId);
+        return ResponseEntity.ok(response);
     }
 
     @DeleteMapping("/{teamId}/members/{memberId}")
@@ -151,19 +94,8 @@ public class TeamController {
         
         log.info("팀 멤버 제거 - 팀: {}, 대상: {}, 요청자: {}", teamId, memberId, userId);
         
-        try {
-            teamService.removeMember(teamId, memberId, userId);
-            return ResponseEntity.ok().build();
-        } catch (IllegalArgumentException e) {
-            log.error("멤버 제거 실패 - 잘못된 인수: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
-        } catch (SecurityException e) {
-            log.error("멤버 제거 실패 - 권한 없음: {}", e.getMessage());
-            return ResponseEntity.status(403).build();
-        } catch (Exception e) {
-            log.error("멤버 제거 실패: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
-        }
+        teamService.removeMember(teamId, memberId, userId);
+        return ResponseEntity.ok().build();
     }
 
     @PostMapping("/{teamId}/leave")
@@ -173,22 +105,8 @@ public class TeamController {
         
         log.info("팀 떠나기 - 팀: {}, 사용자: {}", teamId, userId);
         
-        try {
-            teamService.leaveTeam(teamId, userId);
-            return ResponseEntity.ok().build();
-        } catch (IllegalArgumentException e) {
-            log.error("팀 떠나기 실패 - 잘못된 인수: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
-        } catch (IllegalStateException e) {
-            log.error("팀 떠나기 실패 - 상태 오류: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
-        } catch (SecurityException e) {
-            log.error("팀 떠나기 실패 - 권한 없음: {}", e.getMessage());
-            return ResponseEntity.status(403).build();
-        } catch (Exception e) {
-            log.error("팀 떠나기 실패: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
-        }
+        teamService.leaveTeam(teamId, userId);
+        return ResponseEntity.ok().build();
     }
 
     @PutMapping("/{teamId}")
@@ -199,19 +117,8 @@ public class TeamController {
         
         log.info("팀 정보 수정 요청 - 팀: {}, 사용자: {}, 새 이름: {}", teamId, userId, request.getName());
         
-        try {
-            TeamResponse response = teamService.updateTeam(teamId, userId, request.getName());
-            return ResponseEntity.ok(response);
-        } catch (IllegalArgumentException e) {
-            log.error("팀 정보 수정 실패 - 잘못된 인수: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
-        } catch (SecurityException e) {
-            log.error("팀 정보 수정 실패 - 권한 없음: {}", e.getMessage());
-            return ResponseEntity.status(403).build();
-        } catch (Exception e) {
-            log.error("팀 정보 수정 실패: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
-        }
+        TeamResponse response = teamService.updateTeam(teamId, userId, request.getName());
+        return ResponseEntity.ok(response);
     }
 
     @DeleteMapping("/{teamId}")
@@ -221,18 +128,7 @@ public class TeamController {
         
         log.info("팀 삭제 요청 - 팀: {}, 사용자: {}", teamId, userId);
         
-        try {
-            teamService.deleteTeam(teamId, userId);
-            return ResponseEntity.ok().build();
-        } catch (IllegalArgumentException e) {
-            log.error("팀 삭제 실패 - 잘못된 인수: {}", e.getMessage());
-            return ResponseEntity.badRequest().build();
-        } catch (SecurityException e) {
-            log.error("팀 삭제 실패 - 권한 없음: {}", e.getMessage());
-            return ResponseEntity.status(403).build();
-        } catch (Exception e) {
-            log.error("팀 삭제 실패: {}", e.getMessage());
-            return ResponseEntity.internalServerError().build();
-        }
+        teamService.deleteTeam(teamId, userId);
+        return ResponseEntity.ok().build();
     }
 }
