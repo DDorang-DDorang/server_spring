@@ -1,5 +1,6 @@
 package com.example.ddorang.presentation.controller;
 
+import com.example.ddorang.auth.util.SecurityUtil;
 import com.example.ddorang.common.ApiPaths;
 import com.example.ddorang.presentation.service.FastApiService;
 import com.example.ddorang.presentation.service.VoiceAnalysisService;
@@ -40,10 +41,10 @@ public class VideoAnalysisController {
     @PostMapping("/analyze/{presentationId}")
     public ResponseEntity<Map<String, Object>> analyzeVideo(
             @PathVariable UUID presentationId,
-            @RequestHeader("X-User-Id") UUID userId,
             @RequestParam("videoFile") MultipartFile videoFile) {
 
         try {
+            UUID userId = SecurityUtil.getCurrentUserId();
             log.info("비디오 분석 요청: presentationId={}, userId={}, fileName={}",
                     presentationId, userId, videoFile.getOriginalFilename());
 
@@ -71,6 +72,12 @@ public class VideoAnalysisController {
 
             return ResponseEntity.ok(response);
 
+        } catch (IllegalStateException e) {
+            log.error("인증 실패: {}", e.getMessage());
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("message", "인증되지 않은 사용자입니다.");
+            return ResponseEntity.status(401).body(errorResponse);
         } catch (Exception e) {
             log.error("비디오 분석 실패: presentationId={}", presentationId, e);
 

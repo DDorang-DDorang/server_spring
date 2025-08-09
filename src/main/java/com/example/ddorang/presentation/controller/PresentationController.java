@@ -1,5 +1,6 @@
 package com.example.ddorang.presentation.controller;
 
+import com.example.ddorang.auth.util.SecurityUtil;
 import com.example.ddorang.common.ApiPaths;
 import com.example.ddorang.presentation.entity.Presentation;
 import com.example.ddorang.presentation.service.PresentationService;
@@ -72,15 +73,18 @@ public class PresentationController {
     // 팀 프레젠테이션 조회 (권한 확인)
     @GetMapping("/presentations/{presentationId}/team")
     public ResponseEntity<PresentationResponse> getTeamPresentation(
-            @PathVariable UUID presentationId,
-            @RequestHeader("X-User-Id") UUID userId) {
+            @PathVariable UUID presentationId) {
         
+        UUID userId = SecurityUtil.getCurrentUserId();
         log.info("팀 프레젠테이션 조회 요청 - ID: {}, 사용자: {}", presentationId, userId);
         
         try {
             Presentation presentation = presentationService.getTeamPresentation(presentationId, userId);
             PresentationResponse response = PresentationResponse.from(presentation);
             return ResponseEntity.ok(response);
+        } catch (IllegalStateException e) {
+            log.error("인증 실패: {}", e.getMessage());
+            return ResponseEntity.status(401).build();
         } catch (Exception e) {
             log.error("팀 프레젠테이션 조회 실패: {}", e.getMessage());
             return ResponseEntity.badRequest().build();
@@ -91,9 +95,9 @@ public class PresentationController {
     @PutMapping("/presentations/{presentationId}")
     public ResponseEntity<PresentationResponse> updatePresentation(
             @PathVariable UUID presentationId,
-            @RequestHeader("X-User-Id") UUID userId,
             @RequestBody UpdatePresentationRequest request) {
         
+        UUID userId = SecurityUtil.getCurrentUserId();
         log.info("프레젠테이션 수정 요청 - ID: {}, 사용자: {}", presentationId, userId);
         
         try {
@@ -112,6 +116,9 @@ public class PresentationController {
             
             PresentationResponse response = PresentationResponse.from(presentation);
             return ResponseEntity.ok(response);
+        } catch (IllegalStateException e) {
+            log.error("인증 실패: {}", e.getMessage());
+            return ResponseEntity.status(401).build();
         } catch (Exception e) {
             log.error("프레젠테이션 수정 실패: {}", e.getMessage());
             return ResponseEntity.badRequest().build();
@@ -121,9 +128,9 @@ public class PresentationController {
     // 프레젠테이션 삭제 (권한 확인)
     @DeleteMapping("/presentations/{presentationId}")
     public ResponseEntity<Void> deletePresentation(
-            @PathVariable UUID presentationId,
-            @RequestHeader("X-User-Id") UUID userId) {
+            @PathVariable UUID presentationId) {
         
+        UUID userId = SecurityUtil.getCurrentUserId();
         log.info("프레젠테이션 삭제 요청 - ID: {}, 사용자: {}", presentationId, userId);
         
         try {
@@ -135,6 +142,9 @@ public class PresentationController {
             
             presentationService.deletePresentation(presentationId);
             return ResponseEntity.ok().build();
+        } catch (IllegalStateException e) {
+            log.error("인증 실패: {}", e.getMessage());
+            return ResponseEntity.status(401).build();
         } catch (Exception e) {
             log.error("프레젠테이션 삭제 실패: {}", e.getMessage());
             return ResponseEntity.badRequest().build();
@@ -201,9 +211,9 @@ public class PresentationController {
     // 팀의 모든 프레젠테이션 조회
     @GetMapping("/teams/{teamId}/presentations")
     public ResponseEntity<List<PresentationResponse>> getTeamPresentations(
-            @PathVariable UUID teamId,
-            @RequestHeader("X-User-Id") UUID userId) {
+            @PathVariable UUID teamId) {
         
+        UUID userId = SecurityUtil.getCurrentUserId();
         log.info("팀 프레젠테이션 목록 조회 요청 - 팀: {}, 사용자: {}", teamId, userId);
         
         try {
@@ -213,6 +223,9 @@ public class PresentationController {
                     .toList();
             
             return ResponseEntity.ok(response);
+        } catch (IllegalStateException e) {
+            log.error("인증 실패: {}", e.getMessage());
+            return ResponseEntity.status(401).build();
         } catch (Exception e) {
             log.error("팀 프레젠테이션 조회 실패: {}", e.getMessage());
             return ResponseEntity.badRequest().build();
@@ -223,9 +236,9 @@ public class PresentationController {
     @PutMapping("/presentations/{presentationId}/team")
     public ResponseEntity<PresentationResponse> updateTeamPresentation(
             @PathVariable UUID presentationId,
-            @RequestHeader("X-User-Id") UUID userId,
             @RequestBody UpdatePresentationRequest request) {
         
+        UUID userId = SecurityUtil.getCurrentUserId();
         log.info("팀 프레젠테이션 수정 요청 - ID: {}, 사용자: {}", presentationId, userId);
         
         try {
@@ -239,6 +252,9 @@ public class PresentationController {
             
             PresentationResponse response = PresentationResponse.from(presentation);
             return ResponseEntity.ok(response);
+        } catch (IllegalStateException e) {
+            log.error("인증 실패: {}", e.getMessage());
+            return ResponseEntity.status(401).build();
         } catch (Exception e) {
             log.error("팀 프레젠테이션 수정 실패: {}", e.getMessage());
             return ResponseEntity.badRequest().build();
@@ -248,14 +264,17 @@ public class PresentationController {
     // 팀 프레젠테이션 삭제 (권한 확인)
     @DeleteMapping("/presentations/{presentationId}/team")
     public ResponseEntity<Void> deleteTeamPresentation(
-            @PathVariable UUID presentationId,
-            @RequestHeader("X-User-Id") UUID userId) {
+            @PathVariable UUID presentationId) {
         
+        UUID userId = SecurityUtil.getCurrentUserId();
         log.info("팀 프레젠테이션 삭제 요청 - ID: {}, 사용자: {}", presentationId, userId);
         
         try {
             presentationService.deleteTeamPresentation(presentationId, userId);
             return ResponseEntity.ok().build();
+        } catch (IllegalStateException e) {
+            log.error("인증 실패: {}", e.getMessage());
+            return ResponseEntity.status(401).build();
         } catch (Exception e) {
             log.error("팀 프레젠테이션 삭제 실패: {}", e.getMessage());
             return ResponseEntity.badRequest().build();
