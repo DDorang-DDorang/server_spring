@@ -1,6 +1,7 @@
 package com.example.ddorang.presentation.controller;
 
-import com.example.ddorang.auth.util.SecurityUtil;
+import com.example.ddorang.common.service.AuthorizationService;
+import com.example.ddorang.common.util.SecurityUtil;
 import com.example.ddorang.common.ApiPaths;
 import com.example.ddorang.presentation.entity.Presentation;
 import com.example.ddorang.presentation.service.PresentationService;
@@ -9,6 +10,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -22,10 +24,12 @@ import java.util.UUID;
 public class PresentationController {
     
     private final PresentationService presentationService;
+    private final AuthorizationService authorizationService;
     private final ObjectMapper objectMapper;
     
     // 새 프레젠테이션 생성
     @PostMapping("/topics/{topicId}/presentations")
+    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<PresentationResponse> createPresentation(
             @PathVariable UUID topicId,
             @RequestParam("presentationData") String presentationDataJson,
@@ -57,6 +61,7 @@ public class PresentationController {
     
     // 특정 프레젠테이션 조회
     @GetMapping("/presentations/{presentationId}")
+    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<PresentationResponse> getPresentation(@PathVariable UUID presentationId) {
         log.info("프레젠테이션 조회 요청 - ID: {}", presentationId);
         
@@ -78,13 +83,12 @@ public class PresentationController {
         UUID userId = SecurityUtil.getCurrentUserId();
         log.info("팀 프레젠테이션 조회 요청 - ID: {}, 사용자: {}", presentationId, userId);
         
+        authorizationService.requirePresentationViewPermission(presentationId);
+        
         try {
             Presentation presentation = presentationService.getTeamPresentation(presentationId, userId);
             PresentationResponse response = PresentationResponse.from(presentation);
             return ResponseEntity.ok(response);
-        } catch (IllegalStateException e) {
-            log.error("인증 실패: {}", e.getMessage());
-            return ResponseEntity.status(401).build();
         } catch (Exception e) {
             log.error("팀 프레젠테이션 조회 실패: {}", e.getMessage());
             return ResponseEntity.badRequest().build();
@@ -100,13 +104,9 @@ public class PresentationController {
         UUID userId = SecurityUtil.getCurrentUserId();
         log.info("프레젠테이션 수정 요청 - ID: {}, 사용자: {}", presentationId, userId);
         
+        authorizationService.requirePresentationModifyPermission(presentationId);
+        
         try {
-            // 권한 확인
-            if (!presentationService.canModifyPresentation(presentationId, userId)) {
-                log.error("프레젠테이션 수정 권한 없음 - ID: {}, 사용자: {}", presentationId, userId);
-                return ResponseEntity.status(403).build();
-            }
-            
             Presentation presentation = presentationService.updatePresentation(
                     presentationId,
                     request.getTitle(),
@@ -116,9 +116,6 @@ public class PresentationController {
             
             PresentationResponse response = PresentationResponse.from(presentation);
             return ResponseEntity.ok(response);
-        } catch (IllegalStateException e) {
-            log.error("인증 실패: {}", e.getMessage());
-            return ResponseEntity.status(401).build();
         } catch (Exception e) {
             log.error("프레젠테이션 수정 실패: {}", e.getMessage());
             return ResponseEntity.badRequest().build();
@@ -133,18 +130,11 @@ public class PresentationController {
         UUID userId = SecurityUtil.getCurrentUserId();
         log.info("프레젠테이션 삭제 요청 - ID: {}, 사용자: {}", presentationId, userId);
         
+        authorizationService.requirePresentationModifyPermission(presentationId);
+        
         try {
-            // 권한 확인
-            if (!presentationService.canModifyPresentation(presentationId, userId)) {
-                log.error("프레젠테이션 삭제 권한 없음 - ID: {}, 사용자: {}", presentationId, userId);
-                return ResponseEntity.status(403).build();
-            }
-            
             presentationService.deletePresentation(presentationId);
             return ResponseEntity.ok().build();
-        } catch (IllegalStateException e) {
-            log.error("인증 실패: {}", e.getMessage());
-            return ResponseEntity.status(401).build();
         } catch (Exception e) {
             log.error("프레젠테이션 삭제 실패: {}", e.getMessage());
             return ResponseEntity.badRequest().build();
@@ -153,6 +143,7 @@ public class PresentationController {
 
     // 비디오 업로드 (별도 업로드)
     @PostMapping("/presentations/{presentationId}/video")
+    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<PresentationResponse> uploadVideo(
             @PathVariable UUID presentationId,
             @RequestParam("videoFile") MultipartFile videoFile) {
@@ -171,6 +162,7 @@ public class PresentationController {
 
     // 사용자의 모든 프레젠테이션 조회
     @GetMapping("/users/{userId}/presentations")
+    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<List<PresentationResponse>> getUserPresentations(@PathVariable UUID userId) {
         log.info("사용자 프레젠테이션 목록 조회 요청 - 사용자: {}", userId);
         
@@ -189,6 +181,7 @@ public class PresentationController {
 
     // 프레젠테이션 검색
     @GetMapping("/topics/{topicId}/presentations/search")
+    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<List<PresentationResponse>> searchPresentations(
             @PathVariable UUID topicId,
             @RequestParam String keyword) {
@@ -216,6 +209,8 @@ public class PresentationController {
         UUID userId = SecurityUtil.getCurrentUserId();
         log.info("팀 프레젠테이션 목록 조회 요청 - 팀: {}, 사용자: {}", teamId, userId);
         
+        authorizationService.requireTeamMemberPermission(teamId);
+        
         try {
             List<Presentation> presentations = presentationService.getTeamPresentations(teamId, userId);
             List<PresentationResponse> response = presentations.stream()
@@ -223,9 +218,6 @@ public class PresentationController {
                     .toList();
             
             return ResponseEntity.ok(response);
-        } catch (IllegalStateException e) {
-            log.error("인증 실패: {}", e.getMessage());
-            return ResponseEntity.status(401).build();
         } catch (Exception e) {
             log.error("팀 프레젠테이션 조회 실패: {}", e.getMessage());
             return ResponseEntity.badRequest().build();
@@ -241,6 +233,8 @@ public class PresentationController {
         UUID userId = SecurityUtil.getCurrentUserId();
         log.info("팀 프레젠테이션 수정 요청 - ID: {}, 사용자: {}", presentationId, userId);
         
+        authorizationService.requirePresentationModifyPermission(presentationId);
+        
         try {
             Presentation presentation = presentationService.updateTeamPresentation(
                     presentationId,
@@ -252,9 +246,6 @@ public class PresentationController {
             
             PresentationResponse response = PresentationResponse.from(presentation);
             return ResponseEntity.ok(response);
-        } catch (IllegalStateException e) {
-            log.error("인증 실패: {}", e.getMessage());
-            return ResponseEntity.status(401).build();
         } catch (Exception e) {
             log.error("팀 프레젠테이션 수정 실패: {}", e.getMessage());
             return ResponseEntity.badRequest().build();
@@ -269,12 +260,11 @@ public class PresentationController {
         UUID userId = SecurityUtil.getCurrentUserId();
         log.info("팀 프레젠테이션 삭제 요청 - ID: {}, 사용자: {}", presentationId, userId);
         
+        authorizationService.requirePresentationModifyPermission(presentationId);
+        
         try {
             presentationService.deleteTeamPresentation(presentationId, userId);
             return ResponseEntity.ok().build();
-        } catch (IllegalStateException e) {
-            log.error("인증 실패: {}", e.getMessage());
-            return ResponseEntity.status(401).build();
         } catch (Exception e) {
             log.error("팀 프레젠테이션 삭제 실패: {}", e.getMessage());
             return ResponseEntity.badRequest().build();

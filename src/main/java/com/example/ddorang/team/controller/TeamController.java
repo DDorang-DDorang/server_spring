@@ -1,6 +1,6 @@
 package com.example.ddorang.team.controller;
 
-import com.example.ddorang.auth.util.SecurityUtil;
+import com.example.ddorang.common.util.SecurityUtil;
 import com.example.ddorang.common.ApiPaths;
 import com.example.ddorang.team.dto.*;
 import com.example.ddorang.team.service.TeamService;

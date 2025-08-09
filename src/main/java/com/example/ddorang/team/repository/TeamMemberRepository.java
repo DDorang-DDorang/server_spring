@@ -18,14 +18,16 @@ public interface TeamMemberRepository extends JpaRepository<TeamMember, UUID> {
     @Query("SELECT tm FROM TeamMember tm JOIN FETCH tm.user u WHERE tm.team = :team ORDER BY tm.joinedAt ASC")
     List<TeamMember> findByTeamOrderByJoinedAtAsc(@Param("team") Team team);
     
-    List<TeamMember> findByUserOrderByJoinedAtDesc(User user);
+    @Query("SELECT tm FROM TeamMember tm JOIN FETCH tm.user u JOIN FETCH tm.team t WHERE tm.user = :user ORDER BY tm.joinedAt DESC")
+    List<TeamMember> findByUserOrderByJoinedAtDesc(@Param("user") User user);
     
-    Optional<TeamMember> findByTeamAndUser(Team team, User user);
+    @Query("SELECT tm FROM TeamMember tm JOIN FETCH tm.user u JOIN FETCH tm.team t WHERE tm.team = :team AND tm.user = :user")
+    Optional<TeamMember> findByTeamAndUser(@Param("team") Team team, @Param("user") User user);
     
     boolean existsByTeamAndUser(Team team, User user);
     
-    @Query("SELECT tm FROM TeamMember tm WHERE tm.team = :team AND tm.role = 'OWNER'")
-    List<TeamMember> findTeamOwners(Team team);
+    @Query("SELECT tm FROM TeamMember tm JOIN FETCH tm.user u WHERE tm.team = :team AND tm.role = 'OWNER'")
+    List<TeamMember> findTeamOwners(@Param("team") Team team);
     
     @Query("SELECT COUNT(tm) FROM TeamMember tm WHERE tm.team = :team")
     long countByTeam(Team team);

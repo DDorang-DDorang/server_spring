@@ -7,7 +7,17 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
-@Table(name = "team_member")
+@Table(name = "team_member",
+       uniqueConstraints = {
+           @UniqueConstraint(
+               name = "uk_team_member_team_user", 
+               columnNames = {"team_id", "user_id"}
+           )
+       },
+       indexes = {
+           @Index(name = "idx_team_member_team_id", columnList = "team_id"),
+           @Index(name = "idx_team_member_user_id", columnList = "user_id")
+       })
 @Getter
 @Setter
 @NoArgsConstructor

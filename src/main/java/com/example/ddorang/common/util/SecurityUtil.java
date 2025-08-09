@@ -1,4 +1,4 @@
-package com.example.ddorang.auth.util;
+package com.example.ddorang.common.util;
 
 import com.example.ddorang.auth.security.CustomUserDetails;
 import org.springframework.security.core.Authentication;
