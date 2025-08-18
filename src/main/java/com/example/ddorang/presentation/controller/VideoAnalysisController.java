@@ -5,6 +5,7 @@ import com.example.ddorang.presentation.service.FastApiService;
 import com.example.ddorang.presentation.service.VoiceAnalysisService;
 import com.example.ddorang.presentation.dto.VoiceAnalysisResponse;
 import com.example.ddorang.presentation.dto.SttResultResponse;
+import com.example.ddorang.presentation.dto.PresentationFeedbackResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -103,6 +104,25 @@ public class VideoAnalysisController {
     }
 
     /**
+     * 프레젠테이션의 피드백 결과 조회
+     */
+    @GetMapping("/feedback/{presentationId}")
+    public ResponseEntity<PresentationFeedbackResponse> getPresentationFeedback(@PathVariable UUID presentationId) {
+        try {
+            PresentationFeedbackResponse feedback = voiceAnalysisService.getPresentationFeedback(presentationId);
+
+            if (feedback != null) {
+                return ResponseEntity.ok(feedback);
+            } else {
+                return ResponseEntity.notFound().build();
+            }
+        } catch (Exception e) {
+            log.error("피드백 결과 조회 실패: presentationId={}", presentationId, e);
+            return ResponseEntity.status(500).build();
+        }
+    }
+
+    /**
      * 프레젠테이션의 모든 분석 결과 조회
      */
     @GetMapping("/results/{presentationId}")
@@ -110,10 +130,12 @@ public class VideoAnalysisController {
         try {
             VoiceAnalysisResponse voiceAnalysis = voiceAnalysisService.getVoiceAnalysis(presentationId);
             SttResultResponse sttResult = voiceAnalysisService.getSttResult(presentationId);
+            PresentationFeedbackResponse feedback = voiceAnalysisService.getPresentationFeedback(presentationId);
 
             Map<String, Object> response = new HashMap<>();
             response.put("voiceAnalysis", voiceAnalysis);
             response.put("sttResult", sttResult);
+            response.put("feedback", feedback);
 
             return ResponseEntity.ok(response);
 

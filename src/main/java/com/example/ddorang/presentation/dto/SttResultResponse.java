@@ -19,6 +19,8 @@ public class SttResultResponse {
     private String presentationTitle;
     private String transcription;
     private Float pronunciationScore;
+    private String adjustedScript;
+    private String correctedScript;
     
     // Entity에서 DTO로 변환하는 정적 메서드
     public static SttResultResponse from(SttResult sttResult) {
@@ -28,6 +30,8 @@ public class SttResultResponse {
                 .presentationTitle(sttResult.getPresentation().getTitle())
                 .transcription(sttResult.getTranscription())
                 .pronunciationScore(sttResult.getPronunciationScore())
+                .adjustedScript(sttResult.getAdjustedScript())
+                .correctedScript(sttResult.getCorrectedScript())
                 .build();
     }
 } 
