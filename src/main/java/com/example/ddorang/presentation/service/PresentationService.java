@@ -9,6 +9,12 @@ import com.example.ddorang.presentation.repository.SttResultRepository;
 import com.example.ddorang.common.service.FileStorageService;
 import com.example.ddorang.presentation.service.FastApiService;
 import com.example.ddorang.presentation.service.VoiceAnalysisService;
+import com.example.ddorang.team.entity.Team;
+import com.example.ddorang.team.entity.TeamMember;
+import com.example.ddorang.team.repository.TeamRepository;
+import com.example.ddorang.team.repository.TeamMemberRepository;
+import com.example.ddorang.auth.entity.User;
+import com.example.ddorang.auth.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -33,6 +39,9 @@ public class PresentationService {
     private final FileStorageService fileStorageService;
     private final FastApiService fastApiService;
     private final VoiceAnalysisService voiceAnalysisService;
+    private final TeamRepository teamRepository;
+    private final TeamMemberRepository teamMemberRepository;
+    private final UserRepository userRepository;
     
     // 특정 토픽의 프레젠테이션 목록 조회
     public List<Presentation> getPresentationsByTopicId(UUID topicId) {
@@ -255,5 +264,130 @@ public class PresentationService {
     public List<Presentation> searchUserPresentations(UUID userId, String keyword) {
         log.info("사용자 {}의 프레젠테이션 검색: {}", userId, keyword);
         return presentationRepository.searchUserPresentationsByKeyword(userId, keyword);
+    }
+
+    // 팀 프레젠테이션 조회 (팀원만 접근 가능)
+    public Presentation getTeamPresentation(UUID presentationId, UUID userId) {
+        log.info("팀 프레젠테이션 {} 조회 요청 - 사용자: {}", presentationId, userId);
+        
+        Presentation presentation = getPresentationById(presentationId);
+        Topic topic = presentation.getTopic();
+        
+        // 토픽이 팀에 속한 경우에만 팀원 권한 확인
+        if (topic.getTeam() != null) {
+            User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다"));
+            
+            boolean isTeamMember = teamMemberRepository.existsByTeamAndUser(topic.getTeam(), user);
+            if (!isTeamMember) {
+                throw new RuntimeException("팀 멤버만 접근할 수 있습니다");
+            }
+        } else {
+            // 개인 발표인 경우 소유자만 접근 가능
+            if (!topic.getUser().getUserId().equals(userId)) {
+                throw new RuntimeException("본인의 발표만 조회할 수 있습니다");
+            }
+        }
+        
+        return presentation;
+    }
+
+    // 팀의 모든 프레젠테이션 조회
+    public List<Presentation> getTeamPresentations(UUID teamId, UUID userId) {
+        log.info("팀 {}의 프레젠테이션 목록 조회 - 사용자: {}", teamId, userId);
+        
+        Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> new RuntimeException("팀을 찾을 수 없습니다"));
+        
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다"));
+        
+        // 팀 멤버 권한 확인
+        if (!teamMemberRepository.existsByTeamAndUser(team, user)) {
+            throw new RuntimeException("팀 멤버만 접근할 수 있습니다");
+        }
+        
+        return presentationRepository.findByTeamIdOrderByCreatedAtDesc(teamId);
+    }
+
+    // 프레젠테이션 권한 확인 (수정/삭제 시 사용)
+    public boolean hasAccessToPresentation(UUID presentationId, UUID userId) {
+        try {
+            Presentation presentation = getPresentationById(presentationId);
+            Topic topic = presentation.getTopic();
+            
+            // 개인 발표인 경우 소유자 확인
+            if (topic.getTeam() == null) {
+                return topic.getUser().getUserId().equals(userId);
+            }
+            
+            // 팀 발표인 경우 팀원 확인
+            User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다"));
+            
+            return teamMemberRepository.existsByTeamAndUser(topic.getTeam(), user);
+        } catch (Exception e) {
+            log.error("프레젠테이션 권한 확인 실패: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    // 프레젠테이션 수정 권한 확인 (더 엄격한 권한)
+    public boolean canModifyPresentation(UUID presentationId, UUID userId) {
+        try {
+            Presentation presentation = getPresentationById(presentationId);
+            Topic topic = presentation.getTopic();
+            
+            // 개인 발표인 경우 소유자만 수정 가능
+            if (topic.getTeam() == null) {
+                return topic.getUser().getUserId().equals(userId);
+            }
+            
+            // 팀 발표인 경우 발표 작성자 또는 팀 관리자만 수정 가능
+            User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다"));
+            
+            // 발표 작성자인지 확인 (Topic의 user 필드를 통해)
+            if (topic.getUser() != null && topic.getUser().getUserId().equals(userId)) {
+                return true;
+            }
+            
+            // 팀장인지 확인
+            TeamMember member = teamMemberRepository.findByTeamAndUser(topic.getTeam(), user)
+                    .orElse(null);
+            
+            return member != null && member.getRole() == TeamMember.Role.OWNER;
+        } catch (Exception e) {
+            log.error("프레젠테이션 수정 권한 확인 실패: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    // 팀 프레젠테이션 수정 (권한 확인 포함)
+    @Transactional
+    public Presentation updateTeamPresentation(UUID presentationId, UUID userId, String title, String script, Integer goalTime) {
+        log.info("팀 프레젠테이션 {} 수정 요청 - 사용자: {}", presentationId, userId);
+        
+        // 권한 확인
+        if (!canModifyPresentation(presentationId, userId)) {
+            throw new RuntimeException("프레젠테이션 수정 권한이 없습니다");
+        }
+        
+        // 기존 updatePresentation 로직 재사용
+        return updatePresentation(presentationId, title, script, goalTime);
+    }
+
+    // 팀 프레젠테이션 삭제 (권한 확인 포함)
+    @Transactional
+    public void deleteTeamPresentation(UUID presentationId, UUID userId) {
+        log.info("팀 프레젠테이션 {} 삭제 요청 - 사용자: {}", presentationId, userId);
+        
+        // 권한 확인
+        if (!canModifyPresentation(presentationId, userId)) {
+            throw new RuntimeException("프레젠테이션 삭제 권한이 없습니다");
+        }
+        
+        // 기존 deletePresentation 로직 재사용
+        deletePresentation(presentationId);
     }
 } 

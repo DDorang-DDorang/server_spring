@@ -40,4 +40,12 @@ public interface PresentationRepository extends JpaRepository<Presentation, UUID
     // 사용자의 모든 프레젠테이션에서 검색
     @Query("SELECT p FROM Presentation p JOIN p.topic t WHERE t.user.userId = :userId AND LOWER(p.title) LIKE LOWER(CONCAT('%', :keyword, '%')) ORDER BY p.createdAt DESC")
     List<Presentation> searchUserPresentationsByKeyword(@Param("userId") UUID userId, @Param("keyword") String keyword);
+    
+    // 팀의 모든 프레젠테이션 조회
+    @Query("SELECT p FROM Presentation p JOIN p.topic t WHERE t.team.id = :teamId ORDER BY p.createdAt DESC")
+    List<Presentation> findByTeamIdOrderByCreatedAtDesc(@Param("teamId") UUID teamId);
+    
+    // 팀의 프레젠테이션에서 검색
+    @Query("SELECT p FROM Presentation p JOIN p.topic t WHERE t.team.id = :teamId AND LOWER(p.title) LIKE LOWER(CONCAT('%', :keyword, '%')) ORDER BY p.createdAt DESC")
+    List<Presentation> searchTeamPresentationsByKeyword(@Param("teamId") UUID teamId, @Param("keyword") String keyword);
 } 

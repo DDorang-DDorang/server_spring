@@ -1,14 +1,18 @@
 package com.example.ddorang.presentation.controller;
 
+import com.example.ddorang.common.service.AuthorizationService;
+import com.example.ddorang.common.util.SecurityUtil;
 import com.example.ddorang.common.ApiPaths;
 import com.example.ddorang.presentation.service.FastApiService;
 import com.example.ddorang.presentation.service.VoiceAnalysisService;
+import com.example.ddorang.presentation.service.PresentationService;
 import com.example.ddorang.presentation.dto.VoiceAnalysisResponse;
 import com.example.ddorang.presentation.dto.SttResultResponse;
 import com.example.ddorang.presentation.dto.PresentationFeedbackResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -25,6 +29,7 @@ public class VideoAnalysisController {
 
     private final FastApiService fastApiService;
     private final VoiceAnalysisService voiceAnalysisService;
+    private final AuthorizationService authorizationService;
 
     /**
      * 비디오 파일을 업로드하여 음성 분석 수행
@@ -35,8 +40,11 @@ public class VideoAnalysisController {
             @RequestParam("videoFile") MultipartFile videoFile) {
 
         try {
-            log.info("비디오 분석 요청: presentationId={}, fileName={}",
-                    presentationId, videoFile.getOriginalFilename());
+            UUID userId = SecurityUtil.getCurrentUserId();
+            log.info("비디오 분석 요청: presentationId={}, userId={}, fileName={}",
+                    presentationId, userId, videoFile.getOriginalFilename());
+
+            authorizationService.requireVideoAnalysisPermission(presentationId);
 
             // FastAPI로 비디오 분석 요청
             Map<String, Object> analysisResult = fastApiService.analyzeVideo(videoFile);
@@ -69,6 +77,7 @@ public class VideoAnalysisController {
      * 프레젠테이션의 음성 분석 결과 조회
      */
     @GetMapping("/voice-analysis/{presentationId}")
+    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<VoiceAnalysisResponse> getVoiceAnalysis(@PathVariable UUID presentationId) {
         try {
             VoiceAnalysisResponse voiceAnalysis = voiceAnalysisService.getVoiceAnalysis(presentationId);
@@ -88,6 +97,7 @@ public class VideoAnalysisController {
      * 프레젠테이션의 STT 결과 조회
      */
     @GetMapping("/stt-result/{presentationId}")
+    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<SttResultResponse> getSttResult(@PathVariable UUID presentationId) {
         try {
             SttResultResponse sttResult = voiceAnalysisService.getSttResult(presentationId);
@@ -126,6 +136,7 @@ public class VideoAnalysisController {
      * 프레젠테이션의 모든 분석 결과 조회
      */
     @GetMapping("/results/{presentationId}")
+    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<Map<String, Object>> getAllAnalysisResults(@PathVariable UUID presentationId) {
         try {
             VoiceAnalysisResponse voiceAnalysis = voiceAnalysisService.getVoiceAnalysis(presentationId);
@@ -149,6 +160,7 @@ public class VideoAnalysisController {
      * 분석 결과 존재 여부 확인
      */
     @GetMapping("/has-results/{presentationId}")
+    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<Map<String, Object>> hasAnalysisResults(@PathVariable UUID presentationId) {
         try {
             boolean hasResults = voiceAnalysisService.hasAnalysisResults(presentationId);
@@ -164,4 +176,5 @@ public class VideoAnalysisController {
             return ResponseEntity.status(500).build();
         }
     }
+
 }
