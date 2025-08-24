@@ -1,6 +1,7 @@
 package com.example.ddorang.auth.controller;
 
 import com.example.ddorang.auth.dto.EmailLoginRequest;
+import com.example.ddorang.auth.dto.PasswordResetRequest;
 import com.example.ddorang.auth.dto.SignupRequest;
 import com.example.ddorang.auth.dto.TokenResponse;
 import com.example.ddorang.auth.dto.UserInfoResponse;
@@ -105,15 +106,12 @@ public class EmailAuthController {
     }
 
     @PatchMapping("/password/reset")
-    public ResponseEntity<?> confirmNewPassword(@RequestBody Map<String, String> body) {
-        String email = body.get("email");
-        String newPassword = body.get("newPassword");
-
-        if (!verificationCodeService.isResetVerified(email)) {
+    public ResponseEntity<?> confirmNewPassword(@RequestBody @Valid PasswordResetRequest request) {
+        if (!verificationCodeService.isResetVerified(request.getEmail())) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("이메일 인증이 필요합니다.");
         }
 
-        authService.updatePassword(email, newPassword);
+        authService.updatePassword(request.getEmail(), request.getNewPassword());
         return ResponseEntity.ok("비밀번호가 재설정되었습니다.");
     }
 
@@ -163,7 +161,8 @@ public class EmailAuthController {
                     user.getUserId(),
                     user.getEmail(),
                     user.getName(),
-                    user.getProvider().toString()
+                    user.getProvider().toString(),
+                    user.getProfileImage()
             );
 
             return ResponseEntity.ok(userInfo);

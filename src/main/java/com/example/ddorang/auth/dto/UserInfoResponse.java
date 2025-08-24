@@ -7,12 +7,14 @@ public class UserInfoResponse {
     private String email;
     private String name;
     private String provider;
+    private String profileImage;
     
-    public UserInfoResponse(UUID userId, String email, String name, String provider) {
+    public UserInfoResponse(UUID userId, String email, String name, String provider, String profileImage) {
         this.userId = userId;
         this.email = email;
         this.name = name;
         this.provider = provider;
+        this.profileImage = profileImage;
     }
     
     // getters and setters
@@ -24,4 +26,6 @@ public class UserInfoResponse {
     public void setName(String name) { this.name = name; }
     public String getProvider() { return provider; }
     public void setProvider(String provider) { this.provider = provider; }
+    public String getProfileImage() { return profileImage; }
+    public void setProfileImage(String profileImage) { this.profileImage = profileImage; }
 } 

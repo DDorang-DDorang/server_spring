@@ -27,6 +27,9 @@ public class User {
     @Column(length = 100, columnDefinition = "VARCHAR(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
     private String name;
 
+    @Column(name = "profile_image", columnDefinition = "TEXT")
+    private String profileImage;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Provider provider;

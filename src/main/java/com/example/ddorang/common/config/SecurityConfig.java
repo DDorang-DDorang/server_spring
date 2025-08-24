@@ -51,9 +51,20 @@ public class SecurityConfig {
                         .requestMatchers(ApiPaths.AUTH + "/**",
                                 ApiPaths.OAUTH + "/**",
                                 "/test/**",
-                                "/api/**"
+                                "/api/files/**",
+                                "/api/oauth2/login/success",
+                                "/api/oauth2/refresh"
                                 ).permitAll()
-                        .anyRequest().authenticated()
+                        .requestMatchers("/api/settings/**",
+                                "/api/teams/**", 
+                                "/api/topics/**",
+                                "/api/presentations/**",
+                                "/api/video-analysis/**",
+                                "/api/comments/**",
+                                "/api/auth/me",
+                                "/api/oauth2/validate"
+                                ).authenticated()
+                        .anyRequest().permitAll()
                 )
                 .oauth2Login(oauth2 -> oauth2
                         .authorizationEndpoint(authEndpoint ->
