@@ -2,6 +2,7 @@ package com.example.ddorang.settings.controller;
 
 import com.example.ddorang.auth.entity.User;
 import com.example.ddorang.auth.security.JwtTokenProvider;
+import com.example.ddorang.settings.dto.AccountDeleteRequest;
 import com.example.ddorang.settings.dto.NameUpdateRequest;
 import com.example.ddorang.settings.dto.PasswordChangeRequest;
 import com.example.ddorang.settings.dto.ProfileImageUpdateRequest;
@@ -88,5 +89,23 @@ public class SettingsController {
         }
 
         return jwtTokenProvider.getUserEmailFromToken(token);
+    }
+
+    // 회원탈퇴 (LOCAL + GOOGLE 통합)
+    @DeleteMapping("/account")
+    public ResponseEntity<?> deleteAccount(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestBody AccountDeleteRequest request) {
+        try {
+            String email = extractEmailFromToken(authHeader);
+            settingsService.deleteAccount(email, request.getPassword());
+            return ResponseEntity.ok(Map.of("message", "회원 탈퇴가 완료되었습니다."));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "회원 탈퇴 중 오류가 발생했습니다."));
+        }
     }
 }
