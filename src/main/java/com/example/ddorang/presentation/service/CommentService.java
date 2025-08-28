@@ -12,6 +12,7 @@ import com.example.ddorang.presentation.repository.CommentRepository;
 import com.example.ddorang.presentation.repository.PresentationRepository;
 import com.example.ddorang.team.entity.TeamMember;
 import com.example.ddorang.team.repository.TeamMemberRepository;
+import com.example.ddorang.common.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.AccessDeniedException;
@@ -33,6 +34,7 @@ public class CommentService {
     private final PresentationRepository presentationRepository;
     private final UserRepository userRepository;
     private final TeamMemberRepository teamMemberRepository;
+    private final NotificationService notificationService;
     
     // 댓글 생성
     @Transactional
@@ -75,6 +77,17 @@ public class CommentService {
         
         Comment savedComment = commentRepository.save(comment);
         log.info("댓글 생성 완료: {}", savedComment.getId());
+        
+        // 팀 발표인 경우 팀원들에게 알림 발송
+        Topic topic = presentation.getTopic();
+        if (topic.getTeam() != null) {
+            notificationService.sendCommentNotification(
+                topic.getTeam().getId(), 
+                user.getName(), 
+                presentation.getTitle(),
+                savedComment.getId()
+            );
+        }
         
         return CommentResponse.fromWithoutReplies(savedComment);
     }

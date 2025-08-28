@@ -93,6 +93,13 @@ public class SettingsService {
         }
     }
 
+    // 알림 설정 변경 (LOCAL + GOOGLE 둘 다 가능)
+    public void updateNotificationSetting(String email, Boolean enabled) {
+        User user = getUserByEmail(email);
+        user.setNotificationEnabled(enabled);
+        userRepository.save(user);
+    }
+
     private User getUserByEmail(String email) {
         return userRepository.findByEmail(email)
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 사용자입니다."));

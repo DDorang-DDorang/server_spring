@@ -4,6 +4,7 @@ import com.example.ddorang.auth.entity.User;
 import com.example.ddorang.auth.security.JwtTokenProvider;
 import com.example.ddorang.settings.dto.AccountDeleteRequest;
 import com.example.ddorang.settings.dto.NameUpdateRequest;
+import com.example.ddorang.settings.dto.NotificationSettingRequest;
 import com.example.ddorang.settings.dto.PasswordChangeRequest;
 import com.example.ddorang.settings.dto.ProfileImageUpdateRequest;
 import com.example.ddorang.settings.service.SettingsService;
@@ -106,6 +107,25 @@ public class SettingsController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "회원 탈퇴 중 오류가 발생했습니다."));
+        }
+    }
+
+    // 알림 설정 변경 (LOCAL + GOOGLE 둘 다 가능)
+    @PatchMapping("/notification")
+    public ResponseEntity<?> updateNotificationSetting(
+            @RequestHeader("Authorization") String authHeader,
+            @RequestBody @Valid NotificationSettingRequest request) {
+        try {
+            String email = extractEmailFromToken(authHeader);
+            settingsService.updateNotificationSetting(email, request.getEnabled());
+            String message = request.getEnabled() ? "알림이 활성화되었습니다." : "알림이 비활성화되었습니다.";
+            return ResponseEntity.ok(Map.of("message", message));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "알림 설정 변경 중 오류가 발생했습니다."));
         }
     }
 }

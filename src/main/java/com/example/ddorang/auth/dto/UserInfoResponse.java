@@ -8,13 +8,15 @@ public class UserInfoResponse {
     private String name;
     private String provider;
     private String profileImage;
+    private Boolean notificationEnabled;
     
-    public UserInfoResponse(UUID userId, String email, String name, String provider, String profileImage) {
+    public UserInfoResponse(UUID userId, String email, String name, String provider, String profileImage, Boolean notificationEnabled) {
         this.userId = userId;
         this.email = email;
         this.name = name;
         this.provider = provider;
         this.profileImage = profileImage;
+        this.notificationEnabled = notificationEnabled;
     }
     
     // getters and setters
@@ -28,4 +30,6 @@ public class UserInfoResponse {
     public void setProvider(String provider) { this.provider = provider; }
     public String getProfileImage() { return profileImage; }
     public void setProfileImage(String profileImage) { this.profileImage = profileImage; }
+    public Boolean getNotificationEnabled() { return notificationEnabled; }
+    public void setNotificationEnabled(Boolean notificationEnabled) { this.notificationEnabled = notificationEnabled; }
 } 

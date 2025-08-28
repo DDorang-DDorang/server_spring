@@ -30,6 +30,10 @@ public class User {
     @Column(name = "profile_image", columnDefinition = "TEXT")
     private String profileImage;
 
+    @Column(name = "notification_enabled", nullable = false)
+    @Builder.Default
+    private Boolean notificationEnabled = true;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Provider provider;

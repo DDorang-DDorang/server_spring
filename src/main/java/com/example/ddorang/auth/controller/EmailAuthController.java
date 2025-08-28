@@ -145,7 +145,8 @@ public class EmailAuthController {
                     user.getEmail(),
                     user.getName(),
                     user.getProvider().toString(),
-                    user.getProfileImage()
+                    user.getProfileImage(),
+                    user.getNotificationEnabled()
             );
 
             return ResponseEntity.ok(userInfo);

@@ -8,6 +8,8 @@ import com.example.ddorang.presentation.repository.SttResultRepository;
 import com.example.ddorang.presentation.repository.PresentationRepository;
 import com.example.ddorang.presentation.dto.VoiceAnalysisResponse;
 import com.example.ddorang.presentation.dto.SttResultResponse;
+import com.example.ddorang.common.service.NotificationService;
+import com.example.ddorang.auth.entity.User;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -27,6 +29,7 @@ public class VoiceAnalysisService {
     private final VoiceAnalysisRepository voiceAnalysisRepository;
     private final SttResultRepository sttResultRepository;
     private final PresentationRepository presentationRepository;
+    private final NotificationService notificationService;
 
     /**
      * FastAPI 응답 데이터를 받아 VoiceAnalysis와 SttResult 저장
@@ -45,6 +48,16 @@ public class VoiceAnalysisService {
         saveSttResult(presentation, fastApiResponse);
 
         log.info("분석 결과 저장 완료: {}", presentationId);
+        
+        // AI 분석 완료 알림 발송
+        User owner = presentation.getTopic().getUser();
+        if (owner != null) {
+            notificationService.sendAnalysisCompleteNotification(
+                owner.getUserId(), 
+                presentation.getTitle(), 
+                presentationId
+            );
+        }
     }
 
     private void saveVoiceAnalysis(Presentation presentation, Map<String, Object> response) {
