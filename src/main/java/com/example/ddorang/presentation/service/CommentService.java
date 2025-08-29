@@ -82,7 +82,8 @@ public class CommentService {
         Topic topic = presentation.getTopic();
         if (topic.getTeam() != null) {
             notificationService.sendCommentNotification(
-                topic.getTeam().getId(), 
+                topic.getTeam().getId(),
+                user.getUserId(),
                 user.getName(), 
                 presentation.getTitle(),
                 savedComment.getId()

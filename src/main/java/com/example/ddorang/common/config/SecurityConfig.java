@@ -53,7 +53,8 @@ public class SecurityConfig {
                                 "/test/**",
                                 "/api/files/**",
                                 "/api/oauth2/login/success",
-                                "/api/oauth2/refresh"
+                                "/api/oauth2/refresh",
+                                "/ws/**"
                                 ).permitAll()
                         .requestMatchers("/api/settings/**",
                                 "/api/teams/**", 
@@ -61,6 +62,7 @@ public class SecurityConfig {
                                 "/api/presentations/**",
                                 "/api/video-analysis/**",
                                 "/api/comments/**",
+                                "/api/notifications/**",
                                 "/api/auth/me",
                                 "/api/oauth2/validate"
                                 ).authenticated()
