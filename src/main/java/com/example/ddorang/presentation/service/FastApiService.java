@@ -4,6 +4,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.util.MultiValueMap;
+import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -49,14 +51,18 @@ public class FastApiService {
             tempFile = File.createTempFile("upload-", ".mp4");
             videoFile.transferTo(tempFile);
 
-            // 2. WebClient로 multipart/form-data 전송
+            // 2. WebClient로 multipart/form-data 전송 (필드명 video로 변경, metadata 추가)
+            MultiValueMap<String, Object> multipartData = new LinkedMultiValueMap<>();
+            multipartData.add("video", new FileSystemResource(tempFile));
+            multipartData.add("metadata", "{}"); // 빈 JSON 객체로 metadata 추가
+            
             String responseBody = webClient.mutate()
                     .baseUrl(fastApiBaseUrl)
                     .build()
                     .post()
                     .uri("/stt")
                     .contentType(MediaType.MULTIPART_FORM_DATA)
-                    .body(BodyInserters.fromMultipartData("file", new FileSystemResource(tempFile)))
+                    .body(BodyInserters.fromMultipartData(multipartData))
                     .retrieve()
                     .bodyToMono(String.class)
                     .block();
