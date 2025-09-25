@@ -44,3 +44,4 @@ src/main/resources/application-prod.yml
 ### Uploads ###
 uploads/
 uploads/*
+/app.log

@@ -27,6 +27,13 @@ public class User {
     @Column(length = 100, columnDefinition = "VARCHAR(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
     private String name;
 
+    @Column(name = "profile_image", columnDefinition = "TEXT")
+    private String profileImage;
+
+    @Column(name = "notification_enabled", nullable = false)
+    @Builder.Default
+    private Boolean notificationEnabled = true;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Provider provider;

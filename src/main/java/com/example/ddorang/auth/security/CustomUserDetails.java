@@ -11,6 +11,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import java.util.List;
 
 @Getter
 public class CustomUserDetails implements UserDetails {
@@ -31,7 +32,7 @@ public class CustomUserDetails implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return null;
+        return List.of(() -> "ROLE_USER");
     }
 
     @Override

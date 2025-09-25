@@ -1,6 +1,7 @@
 package com.example.ddorang.auth.controller;
 
 import com.example.ddorang.auth.dto.EmailLoginRequest;
+import com.example.ddorang.auth.dto.PasswordResetRequest;
 import com.example.ddorang.auth.dto.SignupRequest;
 import com.example.ddorang.auth.dto.TokenResponse;
 import com.example.ddorang.auth.dto.UserInfoResponse;
@@ -105,33 +106,13 @@ public class EmailAuthController {
     }
 
     @PatchMapping("/password/reset")
-    public ResponseEntity<?> confirmNewPassword(@RequestBody Map<String, String> body) {
-        String email = body.get("email");
-        String newPassword = body.get("newPassword");
-
-        if (!verificationCodeService.isResetVerified(email)) {
+    public ResponseEntity<?> confirmNewPassword(@RequestBody @Valid PasswordResetRequest request) {
+        if (!verificationCodeService.isResetVerified(request.getEmail())) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("이메일 인증이 필요합니다.");
         }
 
-        authService.updatePassword(email, newPassword);
+        authService.updatePassword(request.getEmail(), request.getNewPassword());
         return ResponseEntity.ok("비밀번호가 재설정되었습니다.");
-    }
-
-
-    @DeleteMapping("/withdraw")
-    public ResponseEntity<?> withdrawUser(@RequestParam String email) {
-        try {
-            // 1. 리프레시 토큰 삭제
-            tokenService.removeRefreshToken(email);
-
-            // 2. 사용자 정보 삭제
-            authService.deleteUser(email);
-
-            return ResponseEntity.ok().body(Map.of("message", "회원 탈퇴가 완료되었습니다."));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("error", "회원 탈퇴 중 오류가 발생했습니다."));
-        }
     }
 
     // 현재 사용자 정보 조회
@@ -163,7 +144,9 @@ public class EmailAuthController {
                     user.getUserId(),
                     user.getEmail(),
                     user.getName(),
-                    user.getProvider().toString()
+                    user.getProvider().toString(),
+                    user.getProfileImage(),
+                    user.getNotificationEnabled()
             );
 
             return ResponseEntity.ok(userInfo);

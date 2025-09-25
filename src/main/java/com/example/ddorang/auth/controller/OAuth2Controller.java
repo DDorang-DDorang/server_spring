@@ -156,19 +156,4 @@ public class OAuth2Controller {
         return ResponseEntity.ok("Token is valid");
     }
 
-    @DeleteMapping("/withdraw")
-    public ResponseEntity<?> withdrawUser(@RequestParam String email) {
-        try {
-            // 1. 리프레시 토큰 삭제
-            tokenService.removeRefreshToken(email);
-            
-            // 2. 사용자 정보 삭제
-            oauth2UserService.deleteUser(email);
-            
-            return ResponseEntity.ok().body(Map.of("message", "회원 탈퇴가 완료되었습니다."));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("error", "회원 탈퇴 중 오류가 발생했습니다."));
-        }
-    }
 } 
