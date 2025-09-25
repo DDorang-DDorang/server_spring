@@ -3,6 +3,7 @@ package com.example.ddorang.auth.controller;
 import com.example.ddorang.auth.entity.User;
 import com.example.ddorang.auth.service.OAuth2UserService;
 import com.example.ddorang.auth.service.TokenService;
+import com.example.ddorang.auth.security.JwtTokenProvider;
 import com.example.ddorang.common.ApiPaths;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpHeaders;
@@ -23,6 +24,7 @@ public class OAuth2Controller {
     private final OAuth2AuthorizedClientService clientService;
     private final OAuth2UserService oauth2UserService;
     private final TokenService tokenService;
+    private final JwtTokenProvider jwtTokenProvider;
 
     private String bearer(HttpHeaders h) {
         String v = h.getFirst(HttpHeaders.AUTHORIZATION);
@@ -33,10 +35,12 @@ public class OAuth2Controller {
 
     public OAuth2Controller(OAuth2AuthorizedClientService clientService, 
                           OAuth2UserService oauth2UserService,
-                          TokenService tokenService) {
+                          TokenService tokenService,
+                          JwtTokenProvider jwtTokenProvider) {
         this.clientService = clientService;
         this.oauth2UserService = oauth2UserService;
         this.tokenService = tokenService;
+        this.jwtTokenProvider = jwtTokenProvider;
     }
 
     @GetMapping("/login/success")
@@ -75,12 +79,12 @@ public class OAuth2Controller {
                 System.out.println("경고: 리프레시 토큰이 없습니다!");
             }
 
-            String accessToken = client.getAccessToken().getTokenValue();
-            System.out.println("액세스 토큰: " + accessToken.substring(0, 20) + "...");
+            // JWT 토큰 생성 (userId 포함)
+            String jwtToken = jwtTokenProvider.createAccessToken(savedUser.getEmail(), savedUser.getUserId());
 
-            // 사용자 정보도 함께 전달
+            // 사용자 정보도 함께 전달 (JWT 토큰 사용)
             String redirectUrl = "http://localhost:3000/oauth2/callback/google" +
-                    "?token=" + accessToken +
+                    "?token=" + jwtToken +
                     "&email=" + java.net.URLEncoder.encode(savedUser.getEmail(), "UTF-8") +
                     "&name=" + java.net.URLEncoder.encode(savedUser.getName(), "UTF-8");
 

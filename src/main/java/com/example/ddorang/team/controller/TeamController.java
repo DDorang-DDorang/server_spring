@@ -117,6 +117,8 @@ public class TeamController {
         }
     }
 
+
+
     @DeleteMapping("/{teamId}/members/{memberId}")
     public ResponseEntity<Void> removeMember(
             @PathVariable UUID teamId,

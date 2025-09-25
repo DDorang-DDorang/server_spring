@@ -77,7 +77,6 @@ public class VideoAnalysisController {
      * 프레젠테이션의 음성 분석 결과 조회
      */
     @GetMapping("/voice-analysis/{presentationId}")
-    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<VoiceAnalysisResponse> getVoiceAnalysis(@PathVariable UUID presentationId) {
         try {
             VoiceAnalysisResponse voiceAnalysis = voiceAnalysisService.getVoiceAnalysis(presentationId);
@@ -97,7 +96,6 @@ public class VideoAnalysisController {
      * 프레젠테이션의 STT 결과 조회
      */
     @GetMapping("/stt-result/{presentationId}")
-    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<SttResultResponse> getSttResult(@PathVariable UUID presentationId) {
         try {
             SttResultResponse sttResult = voiceAnalysisService.getSttResult(presentationId);
@@ -136,7 +134,6 @@ public class VideoAnalysisController {
      * 프레젠테이션의 모든 분석 결과 조회
      */
     @GetMapping("/results/{presentationId}")
-    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<Map<String, Object>> getAllAnalysisResults(@PathVariable UUID presentationId) {
         try {
             VoiceAnalysisResponse voiceAnalysis = voiceAnalysisService.getVoiceAnalysis(presentationId);
@@ -160,7 +157,6 @@ public class VideoAnalysisController {
      * 분석 결과 존재 여부 확인
      */
     @GetMapping("/has-results/{presentationId}")
-    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<Map<String, Object>> hasAnalysisResults(@PathVariable UUID presentationId) {
         try {
             boolean hasResults = voiceAnalysisService.hasAnalysisResults(presentationId);

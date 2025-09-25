@@ -21,6 +21,9 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.ArrayList;
 
 @RestController
 @RequestMapping(ApiPaths.ROOT)
@@ -53,10 +56,24 @@ public class TopicController {
                 response.add(TopicResponse.from(topic, presentationCount, false));
             });
             
-            // 팀 토픽 추가
+            // 팀 토픽을 팀별로 그룹화하여 추가
+            // 팀 ID별로 토픽을 맵에 저장
+            Map<UUID, List<Topic>> teamTopicMap = new HashMap<>();
             teamTopics.forEach(topic -> {
-                long presentationCount = presentationService.getPresentationsByTopicId(topic.getId()).size();
-                response.add(TopicResponse.from(topic, presentationCount, true));
+                if (topic.getTeam() != null) {
+                    teamTopicMap.computeIfAbsent(topic.getTeam().getId(), k -> new ArrayList<>()).add(topic);
+                }
+            });
+            
+            // 각 팀의 토픽들을 순서대로 추가 (팀별로 그룹화)
+            teamTopicMap.values().forEach(teamTopicList -> {
+                // 각 팀 내에서 토픽을 제목순으로 정렬
+                teamTopicList.sort((t1, t2) -> t1.getTitle().compareTo(t2.getTitle()));
+                
+                teamTopicList.forEach(topic -> {
+                    long presentationCount = presentationService.getPresentationsByTopicId(topic.getId()).size();
+                    response.add(TopicResponse.from(topic, presentationCount, true));
+                });
             });
             
             return ResponseEntity.ok(response);

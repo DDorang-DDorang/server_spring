@@ -21,7 +21,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler({SecurityException.class, AccessDeniedException.class})
     public ResponseEntity<ErrorResponse> handleSecurityException(Exception e) {
-        log.error("권한 없음: {}", e.getMessage());
+        log.error("권한 없음: {} (예외 타입: {})", e.getMessage(), e.getClass().getName(), e);
         return ResponseEntity.status(403)
                 .body(ErrorResponse.of("ACCESS_DENIED", e.getMessage()));
     }

@@ -184,8 +184,9 @@ public class VoiceAnalysisService {
      * 분석 결과 존재 여부 확인
      */
     public boolean hasAnalysisResults(UUID presentationId) {
-        return voiceAnalysisRepository.existsByPresentationId(presentationId) &&
-               sttResultRepository.existsByPresentationId(presentationId) &&
+        // 하나라도 분석 결과가 있으면 true 반환
+        return voiceAnalysisRepository.existsByPresentationId(presentationId) ||
+               sttResultRepository.existsByPresentationId(presentationId) ||
                presentationFeedbackRepository.existsByPresentationId(presentationId);
     }
 

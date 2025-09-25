@@ -10,7 +10,6 @@ import java.time.LocalDateTime;
 public class TeamInviteResponse {
     
     private String inviteCode;
-    private String inviteUrl;
     private LocalDateTime expiresAt;
     private String teamName;
 }

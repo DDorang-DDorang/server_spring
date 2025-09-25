@@ -29,7 +29,6 @@ public class PresentationController {
     
     // 새 프레젠테이션 생성
     @PostMapping("/topics/{topicId}/presentations")
-    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<PresentationResponse> createPresentation(
             @PathVariable UUID topicId,
             @RequestParam("presentationData") String presentationDataJson,
@@ -53,6 +52,12 @@ public class PresentationController {
             PresentationResponse response = PresentationResponse.from(presentation);
             return ResponseEntity.ok(response);
             
+        } catch (RuntimeException e) {
+            if (e.getMessage().contains("권한") || e.getMessage().contains("멤버")) {
+                return ResponseEntity.status(403).body(null);
+            } else {
+                return ResponseEntity.badRequest().build();
+            }
         } catch (Exception e) {
             log.error("프레젠테이션 생성 실패: {}", e.getMessage(), e);
             return ResponseEntity.badRequest().build();
@@ -61,7 +66,6 @@ public class PresentationController {
     
     // 특정 프레젠테이션 조회
     @GetMapping("/presentations/{presentationId}")
-    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<PresentationResponse> getPresentation(@PathVariable UUID presentationId) {
         log.info("프레젠테이션 조회 요청 - ID: {}", presentationId);
         
@@ -143,7 +147,6 @@ public class PresentationController {
 
     // 비디오 업로드 (별도 업로드)
     @PostMapping("/presentations/{presentationId}/video")
-    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<PresentationResponse> uploadVideo(
             @PathVariable UUID presentationId,
             @RequestParam("videoFile") MultipartFile videoFile) {
@@ -162,7 +165,6 @@ public class PresentationController {
 
     // 사용자의 모든 프레젠테이션 조회
     @GetMapping("/users/{userId}/presentations")
-    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<List<PresentationResponse>> getUserPresentations(@PathVariable UUID userId) {
         log.info("사용자 프레젠테이션 목록 조회 요청 - 사용자: {}", userId);
         
@@ -181,7 +183,6 @@ public class PresentationController {
 
     // 프레젠테이션 검색
     @GetMapping("/topics/{topicId}/presentations/search")
-    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<List<PresentationResponse>> searchPresentations(
             @PathVariable UUID topicId,
             @RequestParam String keyword) {
