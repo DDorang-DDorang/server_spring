@@ -98,7 +98,6 @@ public class TeamService {
         
         return TeamInviteResponse.builder()
                 .inviteCode(inviteCode)
-                .inviteUrl(baseUrl + "/api/teams/join/" + inviteCode)
                 .teamName(team.getName())
                 .expiresAt(LocalDateTime.now().plusHours(24))
                 .build();

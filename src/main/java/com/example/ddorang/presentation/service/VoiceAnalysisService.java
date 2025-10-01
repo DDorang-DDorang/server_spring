@@ -3,13 +3,18 @@ package com.example.ddorang.presentation.service;
 import com.example.ddorang.presentation.entity.Presentation;
 import com.example.ddorang.presentation.entity.VoiceAnalysis;
 import com.example.ddorang.presentation.entity.SttResult;
+import com.example.ddorang.presentation.entity.PresentationFeedback;
 import com.example.ddorang.presentation.repository.VoiceAnalysisRepository;
 import com.example.ddorang.presentation.repository.SttResultRepository;
 import com.example.ddorang.presentation.repository.PresentationRepository;
+import com.example.ddorang.presentation.repository.PresentationFeedbackRepository;
 import com.example.ddorang.presentation.dto.VoiceAnalysisResponse;
 import com.example.ddorang.presentation.dto.SttResultResponse;
 import com.example.ddorang.common.service.NotificationService;
 import com.example.ddorang.auth.entity.User;
+import com.example.ddorang.presentation.dto.PresentationFeedbackResponse;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -30,9 +35,11 @@ public class VoiceAnalysisService {
     private final SttResultRepository sttResultRepository;
     private final PresentationRepository presentationRepository;
     private final NotificationService notificationService;
+    private final PresentationFeedbackRepository presentationFeedbackRepository;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
-     * FastAPI 응답 데이터를 받아 VoiceAnalysis와 SttResult 저장
+     * FastAPI 응답 데이터를 받아 VoiceAnalysis, SttResult, PresentationFeedback 저장
      */
     @Transactional
     public void saveAnalysisResults(UUID presentationId, Map<String, Object> fastApiResponse) {
@@ -46,6 +53,9 @@ public class VoiceAnalysisService {
 
         // SttResult 저장
         saveSttResult(presentation, fastApiResponse);
+
+        // PresentationFeedback 저장
+        savePresentationFeedback(presentation, fastApiResponse);
 
         log.info("분석 결과 저장 완료: {}", presentationId);
         
@@ -94,10 +104,39 @@ public class VoiceAnalysisService {
                 .presentation(presentation)
                 .transcription(getStringValue(response, "transcription"))
                 .pronunciationScore(getFloatValue(response, "pronunciation_score"))
+                .adjustedScript(getStringValue(response, "adjusted_script"))
+                .correctedScript(getStringValue(response, "corrected_script"))
                 .build();
 
         sttResultRepository.save(sttResult);
         log.info("SttResult 저장 완료: {}", presentation.getId());
+    }
+
+    private void savePresentationFeedback(Presentation presentation, Map<String, Object> response) {
+        // 기존 피드백이 있으면 삭제
+        presentationFeedbackRepository.findByPresentationId(presentation.getId())
+                .ifPresent(presentationFeedbackRepository::delete);
+
+        try {
+            // feedback 객체 추출
+            @SuppressWarnings("unchecked")
+            Map<String, Object> feedback = (Map<String, Object>) response.get("feedback");
+            
+            if (feedback != null) {
+                PresentationFeedback presentationFeedback = PresentationFeedback.builder()
+                        .presentation(presentation)
+                        .frequentWords(convertToJsonString(feedback.get("frequent_words")))
+                        .awkwardSentences(convertToJsonString(feedback.get("awkward_sentences")))
+                        .difficultyIssues(convertToJsonString(feedback.get("difficulty_issues")))
+                        .predictedQuestions(convertToJsonString(response.get("predicted_questions")))
+                        .build();
+
+                presentationFeedbackRepository.save(presentationFeedback);
+                log.info("PresentationFeedback 저장 완료: {}", presentation.getId());
+            }
+        } catch (Exception e) {
+            log.error("피드백 저장 중 오류 발생: {}", e.getMessage(), e);
+        }
     }
 
     /**
@@ -115,6 +154,15 @@ public class VoiceAnalysisService {
     public SttResultResponse getSttResult(UUID presentationId) {
         return sttResultRepository.findByPresentationId(presentationId)
                 .map(SttResultResponse::from)
+                .orElse(null);
+    }
+
+    /**
+     * 프레젠테이션의 피드백 결과 조회
+     */
+    public PresentationFeedbackResponse getPresentationFeedback(UUID presentationId) {
+        return presentationFeedbackRepository.findByPresentationId(presentationId)
+                .map(PresentationFeedbackResponse::from)
                 .orElse(null);
     }
 
@@ -137,11 +185,22 @@ public class VoiceAnalysisService {
     }
 
     /**
+     * 사용자의 모든 피드백 결과 조회
+     */
+    public List<PresentationFeedbackResponse> getUserPresentationFeedbacks(UUID userId) {
+        return presentationFeedbackRepository.findByUserId(userId).stream()
+                .map(PresentationFeedbackResponse::from)
+                .collect(Collectors.toList());
+    }
+
+    /**
      * 분석 결과 존재 여부 확인
      */
     public boolean hasAnalysisResults(UUID presentationId) {
-        return voiceAnalysisRepository.existsByPresentationId(presentationId) &&
-               sttResultRepository.existsByPresentationId(presentationId);
+        // 하나라도 분석 결과가 있으면 true 반환
+        return voiceAnalysisRepository.existsByPresentationId(presentationId) ||
+               sttResultRepository.existsByPresentationId(presentationId) ||
+               presentationFeedbackRepository.existsByPresentationId(presentationId);
     }
 
     // 유틸리티 메서드들
@@ -161,6 +220,16 @@ public class VoiceAnalysisService {
             return Float.parseFloat(value.toString());
         } catch (NumberFormatException e) {
             log.warn("Float 변환 실패: {} = {}", key, value);
+            return null;
+        }
+    }
+
+    private String convertToJsonString(Object obj) {
+        if (obj == null) return null;
+        try {
+            return objectMapper.writeValueAsString(obj);
+        } catch (JsonProcessingException e) {
+            log.error("JSON 변환 실패: {}", e.getMessage());
             return null;
         }
     }

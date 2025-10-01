@@ -25,6 +25,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -61,9 +62,95 @@ public class PresentationService {
     public Presentation createPresentation(UUID topicId, String title, String script, Integer goalTime, MultipartFile videoFile) {
         log.info("새 프레젠테이션 생성: {} (토픽: {})", title, topicId);
         
+        try {
         // 토픽 존재 확인
         Topic topic = topicRepository.findById(topicId)
                 .orElseThrow(() -> new RuntimeException("토픽을 찾을 수 없습니다."));
+        
+            // 현재 인증 상태 확인
+            try {
+                org.springframework.security.core.Authentication auth = 
+                    org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+                
+                if (auth != null) {
+                    log.info("현재 인증 정보 - 인증됨: {}, Principal 타입: {}, Principal: {}", 
+                        auth.isAuthenticated(), 
+                        auth.getPrincipal() != null ? auth.getPrincipal().getClass().getName() : "null",
+                        auth.getPrincipal() != null ? auth.getPrincipal().toString() : "null");
+                } else {
+                    log.error("현재 인증 정보가 null입니다.");
+                }
+            } catch (Exception e) {
+                log.error("인증 정보 확인 중 오류: {}", e.getMessage(), e);
+            }
+            
+            // 현재 사용자 ID 가져오기
+            UUID currentUserId = null;
+            try {
+                log.info("SecurityUtil.getCurrentUserId() 호출 시작");
+                currentUserId = com.example.ddorang.common.util.SecurityUtil.getCurrentUserId();
+                log.info("SecurityUtil.getCurrentUserId() 성공: {}", currentUserId);
+            } catch (Exception e) {
+                log.error("SecurityUtil.getCurrentUserId() 실패: {}", e.getMessage(), e);
+                throw new RuntimeException("사용자 인증 정보를 가져올 수 없습니다: " + e.getMessage());
+            }
+            
+            // 권한 검증
+            if (topic.getTeam() != null) {
+                // 팀 토픽인 경우 팀 멤버 권한 확인
+                log.info("팀 토픽 권한 확인 - 팀: {}, 팀 ID: {}", topic.getTeam().getName(), topic.getTeam().getId());
+                
+                // CustomUserDetails에서 팀 멤버십 정보 확인
+                try {
+                    com.example.ddorang.auth.security.CustomUserDetails userDetails = 
+                        (com.example.ddorang.auth.security.CustomUserDetails) 
+                        org.springframework.security.core.context.SecurityContextHolder.getContext()
+                            .getAuthentication().getPrincipal();
+                    
+                    log.info("CustomUserDetails 로드 성공 - 사용자: {}", userDetails.getUser().getName());
+                    log.info("팀 멤버십 개수: {}", userDetails.getTeamMemberships() != null ? userDetails.getTeamMemberships().size() : 0);
+                    
+                    if (userDetails.getTeamMemberships() != null) {
+                        userDetails.getTeamMemberships().forEach(tm -> {
+                            log.info("팀 멤버십: 팀 {} ({}), 역할: {}", 
+                                tm.getTeam().getName(), tm.getTeam().getId(), tm.getRole());
+                        });
+                    }
+                    
+                    boolean isTeamMember = userDetails.isMemberOfTeam(topic.getTeam().getId());
+                    log.info("팀 멤버 권한 확인 결과 (CustomUserDetails): {}", isTeamMember);
+                    
+                    if (!isTeamMember) {
+                        // 더 자세한 디버깅 정보
+                        log.error("팀 멤버 권한 확인 실패 - 팀: {}, 사용자: {}, 사용자 ID: {}", 
+                            topic.getTeam().getName(), userDetails.getUser().getName(), currentUserId);
+                        
+                        // 팀 멤버 목록 확인
+                        List<TeamMember> teamMembers = teamMemberRepository.findByTeamOrderByJoinedAtAsc(topic.getTeam());
+                        log.info("팀 멤버 목록: {}", teamMembers.stream()
+                            .map(tm -> tm.getUser().getName() + "(" + tm.getUser().getUserId() + ")")
+                            .collect(Collectors.joining(", ")));
+                
+                throw new RuntimeException("팀 멤버만 프레젠테이션을 생성할 수 있습니다");
+            }
+            
+            log.info("팀 토픽 프레젠테이션 생성 권한 확인 완료 - 팀: {}, 사용자: {}", 
+                            topic.getTeam().getName(), userDetails.getUser().getName());
+                } catch (Exception e) {
+                    log.error("CustomUserDetails에서 권한 확인 중 오류 발생: {}", e.getMessage(), e);
+                    throw new RuntimeException("사용자 권한 정보를 확인할 수 없습니다: " + e.getMessage());
+                }
+        } else {
+                // 개인 토픽인 경우 소유자 권한 확인
+                log.info("개인 토픽 권한 확인 - 토픽 소유자: {}, 현재 사용자: {}", 
+                    topic.getUser().getUserId(), currentUserId);
+            
+            if (!topic.getUser().getUserId().equals(currentUserId)) {
+                throw new RuntimeException("본인의 토픽에만 프레젠테이션을 생성할 수 있습니다");
+            }
+            
+            log.info("개인 토픽 프레젠테이션 생성 권한 확인 완료 - 사용자: {}", currentUserId);
+        }
         
         // 비디오 파일 처리
         String videoUrl = null;
@@ -107,50 +194,12 @@ public class PresentationService {
         Presentation savedPresentation = presentationRepository.save(presentation);
         log.info("프레젠테이션 생성 완료: {}", savedPresentation.getId());
 
-        // 비디오 파일이 있는 경우 FastAPI 분석 수행
-        if (videoFile != null && !videoFile.isEmpty()) {
-            Map<String, Object> analysisResult = null;
-            try {
-                log.info("FastAPI 분석 요청 시작");
-                analysisResult = fastApiService.analyzeVideo(videoFile);
-                log.info("FastAPI 분석 결과: {}", analysisResult);
-                
-                // 분석 결과 저장
-                voiceAnalysisService.saveAnalysisResults(savedPresentation.getId(), analysisResult);
-                log.info("분석 결과 저장 완료");
-            } catch (Exception e) {
-                log.error("FastAPI 분석 요청 실패: {}", e.getMessage());
-                // 분석 실패는 프레젠테이션 생성을 막지 않음
-            }
+            return savedPresentation;
             
-            // 목표시간이 있고 대본이 있는 경우 대본 최적화도 함께 실행
-            if (goalTime != null && script != null && !script.trim().isEmpty() && analysisResult != null) {
-                try {
-                    log.info("목표시간이 설정되어 대본 최적화 시작: {}분", goalTime);
-                    Integer goalTimeSeconds = goalTime * 60; // 분 → 초 변환
-                    
-                    // 영상 분석 결과에서 실제 영상 길이 추출
-                    Integer currentDurationSeconds = fastApiService.extractDurationFromAnalysis(analysisResult);
-                    log.info("추출된 영상 길이: {}초", currentDurationSeconds);
-                    
-                    Map<String, Object> optimizeResult = fastApiService.optimizeScript(
-                        script, goalTimeSeconds, currentDurationSeconds);
-                    
-                    // 최적화된 대본으로 업데이트
-                    String optimizedScript = (String) optimizeResult.get("optimized_script");
-                    if (optimizedScript != null && !optimizedScript.trim().isEmpty()) {
-                        savedPresentation.setScript(optimizedScript);
-                        savedPresentation = presentationRepository.save(savedPresentation);
-                        log.info("대본 최적화 완료 및 저장됨");
-                    }
                 } catch (Exception e) {
-                    log.error("대본 최적화 실패: {}", e.getMessage());
-                    // 대본 최적화 실패해도 프레젠테이션 생성은 계속
-                }
-            }
+            log.error("프레젠테이션 생성 중 오류 발생: {}", e.getMessage(), e);
+            throw e; // 원본 예외를 그대로 던짐
         }
-        
-        return savedPresentation;
     }
     
     // 프레젠테이션 수정
@@ -275,11 +324,33 @@ public class PresentationService {
         
         // 토픽이 팀에 속한 경우에만 팀원 권한 확인
         if (topic.getTeam() != null) {
+            try {
+                // CustomUserDetails에서 팀 멤버십 확인
+                org.springframework.security.core.Authentication auth = 
+                    org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+                
+                if (auth != null && auth.getPrincipal() instanceof com.example.ddorang.auth.security.CustomUserDetails) {
+                    com.example.ddorang.auth.security.CustomUserDetails userDetails = 
+                        (com.example.ddorang.auth.security.CustomUserDetails) auth.getPrincipal();
+                    
+                    boolean isTeamMember = userDetails.isMemberOfTeam(topic.getTeam().getId());
+                    log.info("팀 멤버십 확인 결과 (CustomUserDetails): {}", isTeamMember);
+                    
+                    if (!isTeamMember) {
+                        throw new RuntimeException("팀 멤버만 접근할 수 있습니다");
+                    }
+                } else {
+                    // CustomUserDetails를 사용할 수 없는 경우 기존 방식 사용
             User user = userRepository.findById(userId)
                     .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다"));
             
             boolean isTeamMember = teamMemberRepository.existsByTeamAndUser(topic.getTeam(), user);
             if (!isTeamMember) {
+                        throw new RuntimeException("팀 멤버만 접근할 수 있습니다");
+                    }
+                }
+            } catch (Exception e) {
+                log.error("팀 멤버십 확인 실패: {}", e.getMessage(), e);
                 throw new RuntimeException("팀 멤버만 접근할 수 있습니다");
             }
         } else {
@@ -296,6 +367,23 @@ public class PresentationService {
     public List<Presentation> getTeamPresentations(UUID teamId, UUID userId) {
         log.info("팀 {}의 프레젠테이션 목록 조회 - 사용자: {}", teamId, userId);
         
+        try {
+            // CustomUserDetails에서 팀 멤버십 확인
+            org.springframework.security.core.Authentication auth = 
+                org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+            
+            if (auth != null && auth.getPrincipal() instanceof com.example.ddorang.auth.security.CustomUserDetails) {
+                com.example.ddorang.auth.security.CustomUserDetails userDetails = 
+                    (com.example.ddorang.auth.security.CustomUserDetails) auth.getPrincipal();
+                
+                boolean isTeamMember = userDetails.isMemberOfTeam(teamId);
+                log.info("팀 멤버십 확인 결과 (CustomUserDetails): {}", isTeamMember);
+                
+                if (!isTeamMember) {
+                    throw new RuntimeException("팀 멤버만 접근할 수 있습니다");
+                }
+            } else {
+                // CustomUserDetails를 사용할 수 없는 경우 기존 방식 사용
         Team team = teamRepository.findById(teamId)
                 .orElseThrow(() -> new RuntimeException("팀을 찾을 수 없습니다"));
         
@@ -305,9 +393,14 @@ public class PresentationService {
         // 팀 멤버 권한 확인
         if (!teamMemberRepository.existsByTeamAndUser(team, user)) {
             throw new RuntimeException("팀 멤버만 접근할 수 있습니다");
+                }
         }
         
         return presentationRepository.findByTeamIdOrderByCreatedAtDesc(teamId);
+        } catch (Exception e) {
+            log.error("팀 프레젠테이션 조회 실패: {}", e.getMessage(), e);
+            throw e;
+        }
     }
 
     // 프레젠테이션 권한 확인 (수정/삭제 시 사용)

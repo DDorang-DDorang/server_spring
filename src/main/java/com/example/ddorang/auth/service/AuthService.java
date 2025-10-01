@@ -88,8 +88,8 @@ public class AuthService {
             throw new IllegalArgumentException("비밀번호가 일치하지 않습니다.");
         }
 
-        String accessToken = jwtTokenProvider.createAccessToken(user.getEmail());
-        String refreshToken = jwtTokenProvider.createRefreshToken(user.getEmail());
+        String accessToken = jwtTokenProvider.createAccessToken(user.getEmail(), user.getUserId());
+        String refreshToken = jwtTokenProvider.createRefreshToken(user.getEmail(), user.getUserId());
         refreshTokenRepository.save(user.getEmail(), refreshToken);
 
         return new TokenResponse(accessToken, refreshToken);
@@ -110,7 +110,10 @@ public class AuthService {
             throw new IllegalArgumentException("유효하지 않거나 만료된 리프레시 토큰입니다.");
         }
 
-        return jwtTokenProvider.createAccessToken(email);
+        // 사용자 정보 조회하여 userId 포함
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 사용자입니다."));
+        return jwtTokenProvider.createAccessToken(email, user.getUserId());
     }
 
     public String reissueAccessTokenByEmail(String email) {
@@ -125,8 +128,10 @@ public class AuthService {
             throw new IllegalArgumentException("리프레시 토큰이 만료되었습니다. 다시 로그인해주세요.");
         }
 
-        // 새로운 액세스 토큰 생성
-        return jwtTokenProvider.createAccessToken(email);
+        // 새로운 액세스 토큰 생성 (userId 포함)
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 사용자입니다."));
+        return jwtTokenProvider.createAccessToken(email, user.getUserId());
     }
 
     public void logout(String refreshToken) {

@@ -8,6 +8,7 @@ import com.example.ddorang.presentation.service.VoiceAnalysisService;
 import com.example.ddorang.presentation.service.PresentationService;
 import com.example.ddorang.presentation.dto.VoiceAnalysisResponse;
 import com.example.ddorang.presentation.dto.SttResultResponse;
+import com.example.ddorang.presentation.dto.PresentationFeedbackResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -76,7 +77,6 @@ public class VideoAnalysisController {
      * 프레젠테이션의 음성 분석 결과 조회
      */
     @GetMapping("/voice-analysis/{presentationId}")
-    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<VoiceAnalysisResponse> getVoiceAnalysis(@PathVariable UUID presentationId) {
         try {
             VoiceAnalysisResponse voiceAnalysis = voiceAnalysisService.getVoiceAnalysis(presentationId);
@@ -96,7 +96,6 @@ public class VideoAnalysisController {
      * 프레젠테이션의 STT 결과 조회
      */
     @GetMapping("/stt-result/{presentationId}")
-    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<SttResultResponse> getSttResult(@PathVariable UUID presentationId) {
         try {
             SttResultResponse sttResult = voiceAnalysisService.getSttResult(presentationId);
@@ -113,18 +112,38 @@ public class VideoAnalysisController {
     }
 
     /**
+     * 프레젠테이션의 피드백 결과 조회
+     */
+    @GetMapping("/feedback/{presentationId}")
+    public ResponseEntity<PresentationFeedbackResponse> getPresentationFeedback(@PathVariable UUID presentationId) {
+        try {
+            PresentationFeedbackResponse feedback = voiceAnalysisService.getPresentationFeedback(presentationId);
+
+            if (feedback != null) {
+                return ResponseEntity.ok(feedback);
+            } else {
+                return ResponseEntity.notFound().build();
+            }
+        } catch (Exception e) {
+            log.error("피드백 결과 조회 실패: presentationId={}", presentationId, e);
+            return ResponseEntity.status(500).build();
+        }
+    }
+
+    /**
      * 프레젠테이션의 모든 분석 결과 조회
      */
     @GetMapping("/results/{presentationId}")
-    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<Map<String, Object>> getAllAnalysisResults(@PathVariable UUID presentationId) {
         try {
             VoiceAnalysisResponse voiceAnalysis = voiceAnalysisService.getVoiceAnalysis(presentationId);
             SttResultResponse sttResult = voiceAnalysisService.getSttResult(presentationId);
+            PresentationFeedbackResponse feedback = voiceAnalysisService.getPresentationFeedback(presentationId);
 
             Map<String, Object> response = new HashMap<>();
             response.put("voiceAnalysis", voiceAnalysis);
             response.put("sttResult", sttResult);
+            response.put("feedback", feedback);
 
             return ResponseEntity.ok(response);
 
@@ -138,7 +157,6 @@ public class VideoAnalysisController {
      * 분석 결과 존재 여부 확인
      */
     @GetMapping("/has-results/{presentationId}")
-    @PreAuthorize("hasRole('USER')")
     public ResponseEntity<Map<String, Object>> hasAnalysisResults(@PathVariable UUID presentationId) {
         try {
             boolean hasResults = voiceAnalysisService.hasAnalysisResults(presentationId);
