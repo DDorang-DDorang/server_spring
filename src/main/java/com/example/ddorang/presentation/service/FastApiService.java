@@ -158,20 +158,68 @@ public class FastApiService {
     }
 
     /**
+     * FastAPI에 최적화된 대본 비교 요청 전송
+     */
+    public Map<String, Object> compareOptimizedScripts(String optimizedScript1, String optimizedScript2) {
+        log.info("FastAPI 최적화된 대본 비교 요청 시작");
+
+        try {
+            // 요청 데이터 구성
+            Map<String, Object> requestData = new HashMap<>();
+            requestData.put("script1", optimizedScript1);
+            requestData.put("script2", optimizedScript2);
+
+            // WebClient로 POST 요청 전송
+            String responseBody = webClient.mutate()
+                    .baseUrl(fastApiBaseUrl)
+                    .build()
+                    .post()
+                    .uri("/compare-scripts")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(requestData)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+
+            log.info("FastAPI 대본 비교 응답: {}", responseBody);
+
+            // 응답 파싱
+            return objectMapper.readValue(responseBody, new TypeReference<>() {});
+
+        } catch (Exception e) {
+            log.error("FastAPI 대본 비교 통신 오류 발생", e);
+            return createMockComparisonResult();
+        }
+    }
+
+    /**
+     * FastAPI 서버 연결 실패 시 사용할 목 대본 비교 결과
+     */
+    private Map<String, Object> createMockComparisonResult() {
+        Map<String, Object> mockResult = new HashMap<>();
+        mockResult.put("strengths_comparison", "각 발표의 강점을 비교한 결과입니다.");
+        mockResult.put("improvement_suggestions", "개선 방향을 제시합니다.");
+        mockResult.put("overall_feedback", "전반적인 피드백을 제공합니다.");
+
+        log.info("목 대본 비교 결과 생성 완료");
+        return mockResult;
+    }
+
+    /**
      * 영상 분석 결과에서 실제 영상 길이 추출
      */
     public Integer extractDurationFromAnalysis(Map<String, Object> analysisResult) {
         if (analysisResult == null) {
             return null;
         }
-        
+
         Object duration = analysisResult.get("duration_seconds");
         if (duration instanceof Integer) {
             return (Integer) duration;
         } else if (duration instanceof Number) {
             return ((Number) duration).intValue();
         }
-        
+
         log.warn("분석 결과에서 duration_seconds를 찾을 수 없습니다: {}", analysisResult.keySet());
         return null;
     }

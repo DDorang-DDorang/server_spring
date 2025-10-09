@@ -4,9 +4,11 @@ import com.example.ddorang.presentation.dto.ComparisonDataDto;
 import com.example.ddorang.presentation.entity.Presentation;
 import com.example.ddorang.presentation.entity.PresentationComparison;
 import com.example.ddorang.presentation.entity.VoiceAnalysis;
+import com.example.ddorang.presentation.entity.SttResult;
 import com.example.ddorang.presentation.repository.PresentationComparisonRepository;
 import com.example.ddorang.presentation.repository.PresentationRepository;
 import com.example.ddorang.presentation.repository.VoiceAnalysisRepository;
+import com.example.ddorang.presentation.repository.SttResultRepository;
 import com.example.ddorang.auth.entity.User;
 import com.example.ddorang.auth.repository.UserRepository;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -17,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -28,7 +31,9 @@ public class ComparisonService {
     private final PresentationComparisonRepository comparisonRepository;
     private final PresentationRepository presentationRepository;
     private final VoiceAnalysisRepository voiceAnalysisRepository;
+    private final SttResultRepository sttResultRepository;
     private final UserRepository userRepository;
+    private final FastApiService fastApiService;
     private final ObjectMapper objectMapper;
     
     /**
@@ -62,8 +67,8 @@ public class ComparisonService {
         // 5. 비교 데이터 생성
         ComparisonDataDto comparisonData = createComparisonData(analysis1, analysis2);
         
-        // 6. 비교 요약 생성
-        String comparisonSummary = generateComparisonSummary(presentation1, presentation2);
+        // 6. AI 기반 최적화된 대본 비교 분석
+        String aiComparisonSummary = generateAiComparisonSummary(presentation1, presentation2);
         
         // 7. 비교 결과 저장
         PresentationComparison comparison = PresentationComparison.builder()
@@ -71,7 +76,7 @@ public class ComparisonService {
                 .presentation1(presentation1)
                 .presentation2(presentation2)
                 .comparisonData(convertToJson(comparisonData))
-                .comparisonSummary(comparisonSummary)
+                .comparisonSummary(aiComparisonSummary)
                 .build();
         
         PresentationComparison savedComparison = comparisonRepository.save(comparison);
@@ -122,12 +127,74 @@ public class ComparisonService {
     
     
     /**
-     * 비교 요약 생성
+     * AI 기반 최적화된 대본 비교 분석
      */
-    private String generateComparisonSummary(Presentation p1, Presentation p2) {
-        return String.format("'%s'와 '%s' 발표 비교가 완료되었습니다. " +
-                           "육각형 그래프를 통해 두 발표의 수치를 시각적으로 비교해보세요.",
-                           p1.getTitle(), p2.getTitle());
+    private String generateAiComparisonSummary(Presentation p1, Presentation p2) {
+        log.debug("AI 대본 비교 분석 시작 - '{}' vs '{}'", p1.getTitle(), p2.getTitle());
+
+        try {
+            // 1. 최적화된 대본 조회
+            SttResult sttResult1 = getSttResult(p1.getId());
+            SttResult sttResult2 = getSttResult(p2.getId());
+
+            // 2. 최적화된 대본 추출 (adjustedScript 우선, 없으면 correctedScript)
+            String optimizedScript1 = getOptimizedScript(sttResult1);
+            String optimizedScript2 = getOptimizedScript(sttResult2);
+
+            // 3. FastAPI에 대본 비교 요청
+            Map<String, Object> comparisonResult = fastApiService.compareOptimizedScripts(
+                optimizedScript1, optimizedScript2);
+
+            // 4. AI 분석 결과에서 요약 추출
+            return extractComparisonSummary(comparisonResult);
+
+        } catch (Exception e) {
+            log.error("AI 대본 비교 분석 실패: {}", e.getMessage(), e);
+            // 에러 시 기존 방식으로 폴백
+            return String.format("'%s'와 '%s' 발표 비교가 완료되었습니다. " +
+                               "육각형 그래프를 통해 두 발표의 수치를 시각적으로 비교해보세요.",
+                               p1.getTitle(), p2.getTitle());
+        }
+    }
+
+    /**
+     * STT 결과에서 최적화된 대본 추출
+     */
+    private String getOptimizedScript(SttResult sttResult) {
+        if (sttResult.getAdjustedScript() != null && !sttResult.getAdjustedScript().trim().isEmpty()) {
+            return sttResult.getAdjustedScript();
+        } else if (sttResult.getCorrectedScript() != null && !sttResult.getCorrectedScript().trim().isEmpty()) {
+            return sttResult.getCorrectedScript();
+        } else {
+            throw new RuntimeException("최적화된 대본을 찾을 수 없습니다");
+        }
+    }
+
+    /**
+     * FastAPI 응답에서 비교 요약 추출
+     */
+    private String extractComparisonSummary(Map<String, Object> comparisonResult) {
+        StringBuilder summary = new StringBuilder();
+
+        // 강점 비교
+        String strengths = (String) comparisonResult.get("strengths_comparison");
+        if (strengths != null) {
+            summary.append("【강점 비교】\n").append(strengths).append("\n\n");
+        }
+
+        // 개선 제안
+        String improvements = (String) comparisonResult.get("improvement_suggestions");
+        if (improvements != null) {
+            summary.append("【개선 제안】\n").append(improvements).append("\n\n");
+        }
+
+        // 전반적 피드백
+        String feedback = (String) comparisonResult.get("overall_feedback");
+        if (feedback != null) {
+            summary.append("【종합 평가】\n").append(feedback);
+        }
+
+        return summary.toString().trim();
     }
     
     // === 유틸리티 메서드들 ===
@@ -145,6 +212,11 @@ public class ComparisonService {
     private VoiceAnalysis getVoiceAnalysis(UUID presentationId) {
         return voiceAnalysisRepository.findByPresentationId(presentationId)
                 .orElseThrow(() -> new RuntimeException("음성 분석 데이터를 찾을 수 없습니다: " + presentationId));
+    }
+
+    private SttResult getSttResult(UUID presentationId) {
+        return sttResultRepository.findByPresentationId(presentationId)
+                .orElseThrow(() -> new RuntimeException("STT 결과 데이터를 찾을 수 없습니다: " + presentationId));
     }
     
     private void validateUserOwnership(User user, Presentation p1, Presentation p2) {

@@ -10,11 +10,11 @@ import com.example.ddorang.presentation.repository.PresentationRepository;
 import com.example.ddorang.presentation.repository.PresentationFeedbackRepository;
 import com.example.ddorang.presentation.dto.VoiceAnalysisResponse;
 import com.example.ddorang.presentation.dto.SttResultResponse;
+import com.example.ddorang.common.service.NotificationService;
+import com.example.ddorang.auth.entity.User;
 import com.example.ddorang.presentation.dto.PresentationFeedbackResponse;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.example.ddorang.common.service.NotificationService;
-import com.example.ddorang.auth.entity.User;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -34,9 +34,9 @@ public class VoiceAnalysisService {
     private final VoiceAnalysisRepository voiceAnalysisRepository;
     private final SttResultRepository sttResultRepository;
     private final PresentationRepository presentationRepository;
+    private final NotificationService notificationService;
     private final PresentationFeedbackRepository presentationFeedbackRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final NotificationService notificationService;
 
     /**
      * FastAPI 응답 데이터를 받아 VoiceAnalysis, SttResult, PresentationFeedback 저장
