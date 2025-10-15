@@ -7,8 +7,12 @@ import com.example.ddorang.presentation.dto.CommentResponse;
 import com.example.ddorang.presentation.dto.CommentUpdateRequest;
 import com.example.ddorang.presentation.entity.Comment;
 import com.example.ddorang.presentation.entity.Presentation;
+import com.example.ddorang.presentation.entity.Topic;
 import com.example.ddorang.presentation.repository.CommentRepository;
 import com.example.ddorang.presentation.repository.PresentationRepository;
+import com.example.ddorang.team.entity.TeamMember;
+import com.example.ddorang.team.repository.TeamMemberRepository;
+import com.example.ddorang.common.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.access.AccessDeniedException;
@@ -29,6 +33,8 @@ public class CommentService {
     private final CommentRepository commentRepository;
     private final PresentationRepository presentationRepository;
     private final UserRepository userRepository;
+    private final TeamMemberRepository teamMemberRepository;
+    private final NotificationService notificationService;
     
     // 댓글 생성
     @Transactional
@@ -42,6 +48,11 @@ public class CommentService {
         // 사용자 존재 확인
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
+        
+        // 댓글 작성 권한 확인
+        if (!canAccessPresentation(presentation, user)) {
+            throw new AccessDeniedException("해당 프레젠테이션에 댓글을 작성할 권한이 없습니다.");
+        }
         
         // 부모 댓글 확인 (대댓글인 경우)
         Comment parentComment = null;
@@ -66,6 +77,18 @@ public class CommentService {
         
         Comment savedComment = commentRepository.save(comment);
         log.info("댓글 생성 완료: {}", savedComment.getId());
+        
+        // 팀 발표인 경우 팀원들에게 알림 발송
+        Topic topic = presentation.getTopic();
+        if (topic.getTeam() != null) {
+            notificationService.sendCommentNotification(
+                topic.getTeam().getId(),
+                user.getUserId(),
+                user.getName(), 
+                presentation.getTitle(),
+                savedComment.getId()
+            );
+        }
         
         return CommentResponse.fromWithoutReplies(savedComment);
     }
@@ -173,5 +196,38 @@ public class CommentService {
     // 댓글 작성자 확인
     public boolean isCommentOwner(UUID commentId, UUID userId) {
         return commentRepository.existsByIdAndUserId(commentId, userId);
+    }
+
+    // 팀 댓글 조회 (권한 확인)
+    public List<CommentResponse> getTeamCommentsByPresentationId(UUID presentationId, UUID userId, String sortBy) {
+        log.info("팀 프레젠테이션 {} 댓글 목록 조회, 사용자: {}, 정렬: {}", presentationId, userId, sortBy);
+        
+        // 프레젠테이션 존재 확인
+        Presentation presentation = presentationRepository.findById(presentationId)
+                .orElseThrow(() -> new RuntimeException("프레젠테이션을 찾을 수 없습니다."));
+        
+        // 사용자 존재 확인
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("사용자를 찾을 수 없습니다."));
+        
+        // 댓글 조회 권한 확인
+        if (!canAccessPresentation(presentation, user)) {
+            throw new AccessDeniedException("해당 프레젠테이션의 댓글을 조회할 권한이 없습니다.");
+        }
+        
+        return getCommentsByPresentationId(presentationId, sortBy);
+    }
+
+    // 프레젠테이션 접근 권한 확인
+    private boolean canAccessPresentation(Presentation presentation, User user) {
+        Topic topic = presentation.getTopic();
+        
+        // 개인 발표인 경우 소유자만 접근 가능
+        if (topic.getTeam() == null) {
+            return topic.getUser().getUserId().equals(user.getUserId());
+        }
+        
+        // 팀 발표인 경우 팀원 확인
+        return teamMemberRepository.existsByTeamAndUser(topic.getTeam(), user);
     }
 }

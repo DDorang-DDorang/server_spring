@@ -1,5 +1,7 @@
 package com.example.ddorang.presentation.controller;
 
+import com.example.ddorang.common.service.AuthorizationService;
+import com.example.ddorang.common.util.SecurityUtil;
 import com.example.ddorang.common.ApiPaths;
 import com.example.ddorang.presentation.entity.Presentation;
 import com.example.ddorang.presentation.service.PresentationService;
@@ -8,6 +10,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -21,6 +24,7 @@ import java.util.UUID;
 public class PresentationController {
     
     private final PresentationService presentationService;
+    private final AuthorizationService authorizationService;
     private final ObjectMapper objectMapper;
     
     // 새 프레젠테이션 생성
@@ -48,6 +52,12 @@ public class PresentationController {
             PresentationResponse response = PresentationResponse.from(presentation);
             return ResponseEntity.ok(response);
             
+        } catch (RuntimeException e) {
+            if (e.getMessage().contains("권한") || e.getMessage().contains("멤버")) {
+                return ResponseEntity.status(403).body(null);
+            } else {
+                return ResponseEntity.badRequest().build();
+            }
         } catch (Exception e) {
             log.error("프레젠테이션 생성 실패: {}", e.getMessage(), e);
             return ResponseEntity.badRequest().build();
@@ -68,14 +78,37 @@ public class PresentationController {
             return ResponseEntity.notFound().build();
         }
     }
+
+    // 팀 프레젠테이션 조회 (권한 확인)
+    @GetMapping("/presentations/{presentationId}/team")
+    public ResponseEntity<PresentationResponse> getTeamPresentation(
+            @PathVariable UUID presentationId) {
+        
+        UUID userId = SecurityUtil.getCurrentUserId();
+        log.info("팀 프레젠테이션 조회 요청 - ID: {}, 사용자: {}", presentationId, userId);
+        
+        authorizationService.requirePresentationViewPermission(presentationId);
+        
+        try {
+            Presentation presentation = presentationService.getTeamPresentation(presentationId, userId);
+            PresentationResponse response = PresentationResponse.from(presentation);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("팀 프레젠테이션 조회 실패: {}", e.getMessage());
+            return ResponseEntity.badRequest().build();
+        }
+    }
     
-    // 프레젠테이션 수정
+    // 프레젠테이션 수정 (권한 확인)
     @PutMapping("/presentations/{presentationId}")
     public ResponseEntity<PresentationResponse> updatePresentation(
             @PathVariable UUID presentationId,
             @RequestBody UpdatePresentationRequest request) {
         
-        log.info("프레젠테이션 수정 요청 - ID: {}", presentationId);
+        UUID userId = SecurityUtil.getCurrentUserId();
+        log.info("프레젠테이션 수정 요청 - ID: {}, 사용자: {}", presentationId, userId);
+        
+        authorizationService.requirePresentationModifyPermission(presentationId);
         
         try {
             Presentation presentation = presentationService.updatePresentation(
@@ -93,10 +126,15 @@ public class PresentationController {
         }
     }
     
-    // 프레젠테이션 삭제
+    // 프레젠테이션 삭제 (권한 확인)
     @DeleteMapping("/presentations/{presentationId}")
-    public ResponseEntity<Void> deletePresentation(@PathVariable UUID presentationId) {
-        log.info("프레젠테이션 삭제 요청 - ID: {}", presentationId);
+    public ResponseEntity<Void> deletePresentation(
+            @PathVariable UUID presentationId) {
+        
+        UUID userId = SecurityUtil.getCurrentUserId();
+        log.info("프레젠테이션 삭제 요청 - ID: {}, 사용자: {}", presentationId, userId);
+        
+        authorizationService.requirePresentationModifyPermission(presentationId);
         
         try {
             presentationService.deletePresentation(presentationId);
@@ -160,6 +198,76 @@ public class PresentationController {
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             log.error("프레젠테이션 검색 실패: {}", e.getMessage());
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    // 팀의 모든 프레젠테이션 조회
+    @GetMapping("/teams/{teamId}/presentations")
+    public ResponseEntity<List<PresentationResponse>> getTeamPresentations(
+            @PathVariable UUID teamId) {
+        
+        UUID userId = SecurityUtil.getCurrentUserId();
+        log.info("팀 프레젠테이션 목록 조회 요청 - 팀: {}, 사용자: {}", teamId, userId);
+        
+        authorizationService.requireTeamMemberPermission(teamId);
+        
+        try {
+            List<Presentation> presentations = presentationService.getTeamPresentations(teamId, userId);
+            List<PresentationResponse> response = presentations.stream()
+                    .map(PresentationResponse::from)
+                    .toList();
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("팀 프레젠테이션 조회 실패: {}", e.getMessage());
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    // 팀 프레젠테이션 수정 (권한 확인)
+    @PutMapping("/presentations/{presentationId}/team")
+    public ResponseEntity<PresentationResponse> updateTeamPresentation(
+            @PathVariable UUID presentationId,
+            @RequestBody UpdatePresentationRequest request) {
+        
+        UUID userId = SecurityUtil.getCurrentUserId();
+        log.info("팀 프레젠테이션 수정 요청 - ID: {}, 사용자: {}", presentationId, userId);
+        
+        authorizationService.requirePresentationModifyPermission(presentationId);
+        
+        try {
+            Presentation presentation = presentationService.updateTeamPresentation(
+                    presentationId,
+                    userId,
+                    request.getTitle(),
+                    request.getScript(),
+                    request.getGoalTime()
+            );
+            
+            PresentationResponse response = PresentationResponse.from(presentation);
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            log.error("팀 프레젠테이션 수정 실패: {}", e.getMessage());
+            return ResponseEntity.badRequest().build();
+        }
+    }
+
+    // 팀 프레젠테이션 삭제 (권한 확인)
+    @DeleteMapping("/presentations/{presentationId}/team")
+    public ResponseEntity<Void> deleteTeamPresentation(
+            @PathVariable UUID presentationId) {
+        
+        UUID userId = SecurityUtil.getCurrentUserId();
+        log.info("팀 프레젠테이션 삭제 요청 - ID: {}, 사용자: {}", presentationId, userId);
+        
+        authorizationService.requirePresentationModifyPermission(presentationId);
+        
+        try {
+            presentationService.deleteTeamPresentation(presentationId, userId);
+            return ResponseEntity.ok().build();
+        } catch (Exception e) {
+            log.error("팀 프레젠테이션 삭제 실패: {}", e.getMessage());
             return ResponseEntity.badRequest().build();
         }
     }

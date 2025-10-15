@@ -1,14 +1,18 @@
 package com.example.ddorang.presentation.controller;
 
+import com.example.ddorang.common.service.AuthorizationService;
+import com.example.ddorang.common.util.SecurityUtil;
 import com.example.ddorang.common.ApiPaths;
 import com.example.ddorang.presentation.service.FastApiService;
 import com.example.ddorang.presentation.service.VoiceAnalysisService;
+import com.example.ddorang.presentation.service.PresentationService;
 import com.example.ddorang.presentation.dto.VoiceAnalysisResponse;
 import com.example.ddorang.presentation.dto.SttResultResponse;
 import com.example.ddorang.presentation.dto.PresentationFeedbackResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -25,6 +29,7 @@ public class VideoAnalysisController {
 
     private final FastApiService fastApiService;
     private final VoiceAnalysisService voiceAnalysisService;
+    private final AuthorizationService authorizationService;
 
     /**
      * 비디오 파일을 업로드하여 음성 분석 수행
@@ -35,8 +40,11 @@ public class VideoAnalysisController {
             @RequestParam("videoFile") MultipartFile videoFile) {
 
         try {
-            log.info("비디오 분석 요청: presentationId={}, fileName={}",
-                    presentationId, videoFile.getOriginalFilename());
+            UUID userId = SecurityUtil.getCurrentUserId();
+            log.info("비디오 분석 요청: presentationId={}, userId={}, fileName={}",
+                    presentationId, userId, videoFile.getOriginalFilename());
+
+            authorizationService.requireVideoAnalysisPermission(presentationId);
 
             // FastAPI로 비디오 분석 요청
             Map<String, Object> analysisResult = fastApiService.analyzeVideo(videoFile);
@@ -164,4 +172,5 @@ public class VideoAnalysisController {
             return ResponseEntity.status(500).build();
         }
     }
+
 }

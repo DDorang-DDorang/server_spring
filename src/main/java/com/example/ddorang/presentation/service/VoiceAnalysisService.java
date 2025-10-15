@@ -10,6 +10,8 @@ import com.example.ddorang.presentation.repository.PresentationRepository;
 import com.example.ddorang.presentation.repository.PresentationFeedbackRepository;
 import com.example.ddorang.presentation.dto.VoiceAnalysisResponse;
 import com.example.ddorang.presentation.dto.SttResultResponse;
+import com.example.ddorang.common.service.NotificationService;
+import com.example.ddorang.auth.entity.User;
 import com.example.ddorang.presentation.dto.PresentationFeedbackResponse;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -32,6 +34,7 @@ public class VoiceAnalysisService {
     private final VoiceAnalysisRepository voiceAnalysisRepository;
     private final SttResultRepository sttResultRepository;
     private final PresentationRepository presentationRepository;
+    private final NotificationService notificationService;
     private final PresentationFeedbackRepository presentationFeedbackRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -55,6 +58,16 @@ public class VoiceAnalysisService {
         savePresentationFeedback(presentation, fastApiResponse);
 
         log.info("분석 결과 저장 완료: {}", presentationId);
+        
+        // AI 분석 완료 알림 발송
+        User owner = presentation.getTopic().getUser();
+        if (owner != null) {
+            notificationService.sendAnalysisCompleteNotification(
+                owner.getUserId(), 
+                presentation.getTitle(), 
+                presentationId
+            );
+        }
     }
 
     private void saveVoiceAnalysis(Presentation presentation, Map<String, Object> response) {
@@ -184,8 +197,9 @@ public class VoiceAnalysisService {
      * 분석 결과 존재 여부 확인
      */
     public boolean hasAnalysisResults(UUID presentationId) {
-        return voiceAnalysisRepository.existsByPresentationId(presentationId) &&
-               sttResultRepository.existsByPresentationId(presentationId) &&
+        // 하나라도 분석 결과가 있으면 true 반환
+        return voiceAnalysisRepository.existsByPresentationId(presentationId) ||
+               sttResultRepository.existsByPresentationId(presentationId) ||
                presentationFeedbackRepository.existsByPresentationId(presentationId);
     }
 

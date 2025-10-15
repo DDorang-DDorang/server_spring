@@ -24,8 +24,12 @@ public interface TopicRepository extends JpaRepository<Topic, UUID> {
     @Query("SELECT t FROM Topic t WHERE t.user.userId = :userId AND t.team IS NULL ORDER BY t.title")
     List<Topic> findByUserIdAndTeamIsNullOrderByTitle(@Param("userId") UUID userId);
     
-    // 팀 토픽만 조회 (팀이 있는 토픽) - 단순화된 버전
-    @Query("SELECT t FROM Topic t WHERE t.user.userId = :userId AND t.team IS NOT NULL ORDER BY t.title")
+    // 팀 토픽만 조회 (사용자가 속한 팀들의 모든 토픽)
+    @Query("SELECT DISTINCT t FROM Topic t " +
+           "JOIN t.team team " +
+           "JOIN team.members tm " +
+           "WHERE tm.user.userId = :userId " +
+           "ORDER BY t.title")
     List<Topic> findTeamTopicsByUserId(@Param("userId") UUID userId);
     
     // 토픽 제목으로 검색 (사용자별)
