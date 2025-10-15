@@ -27,7 +27,7 @@ public class FastApiPollingService {
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
 
-    @Value("${app.fastapi.url:http://localhost:8000}")
+    @Value("${fastapi.base-url:http://localhost:8000}")
     private String fastApiUrl;
 
     // 비동기 영상 분석 시작
@@ -40,7 +40,9 @@ public class FastApiPollingService {
             String fastApiJobId = callFastApiStt(job);
 
             if (fastApiJobId == null) {
-                videoAnalysisService.markJobAsFailed(job.getId(), "FastAPI 호출 실패");
+                log.warn("FastAPI 초기 호출 실패, 백그라운드 처리 대기 중: {}", job.getId());
+                videoAnalysisService.updateJobStatus(job.getId(), "processing", "분석 서버 연결 중입니다. 잠시만 기다려주세요...");
+                // 실패로 마킹하지 않고 processing 상태 유지하여 폴링 기회 제공
                 return CompletableFuture.completedFuture(null);
             }
 
