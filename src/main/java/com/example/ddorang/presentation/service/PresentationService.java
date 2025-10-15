@@ -6,6 +6,8 @@ import com.example.ddorang.presentation.repository.PresentationRepository;
 import com.example.ddorang.presentation.repository.TopicRepository;
 import com.example.ddorang.presentation.repository.VoiceAnalysisRepository;
 import com.example.ddorang.presentation.repository.SttResultRepository;
+import com.example.ddorang.presentation.repository.VideoAnalysisJobRepository;
+import com.example.ddorang.presentation.entity.VideoAnalysisJob;
 import com.example.ddorang.common.service.FileStorageService;
 import com.example.ddorang.presentation.service.FastApiService;
 import com.example.ddorang.presentation.service.VoiceAnalysisService;
@@ -43,6 +45,7 @@ public class PresentationService {
     private final TeamRepository teamRepository;
     private final TeamMemberRepository teamMemberRepository;
     private final UserRepository userRepository;
+    private final VideoAnalysisJobRepository videoAnalysisJobRepository;
     
     // 특정 토픽의 프레젠테이션 목록 조회
     public List<Presentation> getPresentationsByTopicId(UUID topicId) {
@@ -483,4 +486,59 @@ public class PresentationService {
         // 기존 deletePresentation 로직 재사용
         deletePresentation(presentationId);
     }
+
+    // 비동기 영상 분석 관련 메서드들
+    @Transactional
+    public VideoAnalysisJob createVideoAnalysisJob(Presentation presentation, String originalFilename, Long fileSize) {
+        log.info("비동기 영상 분석 작업 생성 - 프레젠테이션: {}", presentation.getId());
+
+        // 이미 진행 중인 작업이 있는지 확인
+        videoAnalysisJobRepository.findActiveJobByPresentationId(presentation.getId())
+            .ifPresent(existingJob -> {
+                log.warn("진행 중인 분석 작업 존재: {}", existingJob.getId());
+                throw new RuntimeException("이미 진행 중인 영상 분석 작업이 있습니다. 기존 작업: " + existingJob.getId());
+            });
+
+        // VideoAnalysisJob 생성
+        VideoAnalysisJob job = VideoAnalysisJob.builder()
+            .presentation(presentation)
+            .videoPath(presentation.getVideoUrl())
+            .originalFilename(originalFilename)
+            .fileSize(fileSize)
+            .build();
+
+        // DB에 저장
+        VideoAnalysisJob savedJob = videoAnalysisJobRepository.save(job);
+        log.info("영상 분석 작업 생성 완료 - ID: {}", savedJob.getId());
+
+        return savedJob;
+    }
+
+    // 사용자의 모든 영상 분석 작업 조회
+    public List<VideoAnalysisJob> getUserVideoAnalysisJobs(UUID userId) {
+        log.info("사용자 {}의 영상 분석 작업 목록 조회", userId);
+        return videoAnalysisJobRepository.findByUserIdOrderByCreatedAtDesc(userId);
+    }
+
+    // 특정 프레젠테이션의 분석 작업 조회
+    public List<VideoAnalysisJob> getPresentationAnalysisJobs(UUID presentationId) {
+        log.info("프레젠테이션 {}의 분석 작업 목록 조회", presentationId);
+        return videoAnalysisJobRepository.findByPresentationIdOrderByCreatedAtDesc(presentationId);
+    }
+
+    // 진행 중인 작업 수 조회
+    public long getActiveJobCount(UUID userId) {
+        long count = videoAnalysisJobRepository.countActiveJobsByUserId(userId);
+        log.debug("사용자 {}의 진행 중인 작업 수: {}", userId, count);
+        return count;
+    }
+
+    // 가장 최근 완료된 분석 결과 조회
+    public VideoAnalysisJob getLatestCompletedAnalysis(UUID presentationId) {
+        return videoAnalysisJobRepository.findLatestCompletedJobByPresentationId(presentationId)
+            .orElse(null);
+    }
+
+
+
 } 
