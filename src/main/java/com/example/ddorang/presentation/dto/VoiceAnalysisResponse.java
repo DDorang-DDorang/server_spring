@@ -33,6 +33,10 @@ public class VoiceAnalysisResponse {
     private Float wpmAvg;
     private String wpmComment;
     
+    // 표정 분석
+    private String expressionGrade;
+    private String expressionText;
+    
     // Entity에서 DTO로 변환하는 정적 메서드
     public static VoiceAnalysisResponse from(VoiceAnalysis voiceAnalysis) {
         return VoiceAnalysisResponse.builder()
@@ -48,6 +52,8 @@ public class VoiceAnalysisResponse {
                 .wpmGrade(voiceAnalysis.getWpmGrade())
                 .wpmAvg(voiceAnalysis.getWpmAvg())
                 .wpmComment(voiceAnalysis.getWpmComment())
+                .expressionGrade(voiceAnalysis.getExpressionGrade())
+                .expressionText(voiceAnalysis.getExpressionText())
                 .build();
     }
 } 

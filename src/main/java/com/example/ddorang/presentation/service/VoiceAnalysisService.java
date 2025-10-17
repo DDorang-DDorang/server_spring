@@ -89,6 +89,9 @@ public class VoiceAnalysisService {
                 .wpmGrade(getStringValue(response, "wpm_grade"))
                 .wpmAvg(getFloatValue(response, "wpm_avg"))
                 .wpmComment(getStringValue(response, "wpm_comment"))
+                // 표정 분석 추가
+                .expressionGrade(getStringValue(response, "expression_grade"))
+                .expressionText(getStringValue(response, "expression_text"))
                 .build();
 
         voiceAnalysisRepository.save(voiceAnalysis);

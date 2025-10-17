@@ -30,6 +30,7 @@ public class VideoAnalysisController {
     private final FastApiService fastApiService;
     private final VoiceAnalysisService voiceAnalysisService;
     private final AuthorizationService authorizationService;
+    private final PresentationService presentationService;
 
     /**
      * 비디오 파일을 업로드하여 음성 분석 수행
@@ -46,8 +47,11 @@ public class VideoAnalysisController {
 
             authorizationService.requireVideoAnalysisPermission(presentationId);
 
-            // FastAPI로 비디오 분석 요청
-            Map<String, Object> analysisResult = fastApiService.analyzeVideo(videoFile);
+            // 프레젠테이션의 목표시간 조회
+            Integer goalTimeSeconds = presentationService.getGoalTime(presentationId);
+
+            // FastAPI로 비디오 분석 요청 (목표시간 포함)
+            Map<String, Object> analysisResult = fastApiService.analyzeVideo(videoFile, goalTimeSeconds);
 
             // 분석 결과를 DB에 저장
             voiceAnalysisService.saveAnalysisResults(presentationId, analysisResult);
