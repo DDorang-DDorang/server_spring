@@ -2,11 +2,7 @@ package com.example.ddorang.presentation.service;
 
 import com.example.ddorang.presentation.entity.Presentation;
 import com.example.ddorang.presentation.entity.Topic;
-import com.example.ddorang.presentation.repository.PresentationRepository;
-import com.example.ddorang.presentation.repository.TopicRepository;
-import com.example.ddorang.presentation.repository.VoiceAnalysisRepository;
-import com.example.ddorang.presentation.repository.SttResultRepository;
-import com.example.ddorang.presentation.repository.VideoAnalysisJobRepository;
+import com.example.ddorang.presentation.repository.*;
 import com.example.ddorang.presentation.entity.VideoAnalysisJob;
 import com.example.ddorang.common.service.FileStorageService;
 import com.example.ddorang.presentation.service.FastApiService;
@@ -39,6 +35,8 @@ public class PresentationService {
     private final TopicRepository topicRepository;
     private final VoiceAnalysisRepository voiceAnalysisRepository;
     private final SttResultRepository sttResultRepository;
+    private final PresentationFeedbackRepository presentationFeedbackRepository;
+    private final PresentationComparisonRepository presentationComparisonRepository;
     private final FileStorageService fileStorageService;
     private final FastApiService fastApiService;
     private final VoiceAnalysisService voiceAnalysisService;
@@ -69,6 +67,14 @@ public class PresentationService {
         // 토픽 존재 확인
         Topic topic = topicRepository.findById(topicId)
                 .orElseThrow(() -> new RuntimeException("토픽을 찾을 수 없습니다."));
+        
+            // 토픽당 발표 개수 제한 확인 (최대 2개)
+            long presentationCount = presentationRepository.countByTopicId(topicId);
+            if (presentationCount >= 2) {
+                log.warn("토픽 {}에 이미 {}개의 발표가 있습니다. 최대 2개까지만 생성 가능합니다.", topicId, presentationCount);
+                throw new RuntimeException("토픽당 최대 2개의 발표만 생성할 수 있습니다. 새로운 발표를 추가하려면 기존 발표를 삭제해주세요.");
+            }
+            log.info("토픽 {}의 현재 발표 개수: {} (최대 2개)", topicId, presentationCount);
         
             // 현재 인증 상태 확인
             try {
@@ -276,28 +282,39 @@ public class PresentationService {
         
         Presentation presentation = getPresentationById(presentationId);
         
-        // 관련된 VoiceAnalysis 데이터 삭제
+        // 1. 관련된 PresentationFeedback 데이터 삭제
+        presentationFeedbackRepository.findByPresentationId(presentationId)
+                .ifPresent(feedback -> {
+                    presentationFeedbackRepository.delete(feedback);
+                    log.info("PresentationFeedback 삭제 완료: {}", presentationId);
+                });
+        
+        // 2. 관련된 VoiceAnalysis 데이터 삭제
         voiceAnalysisRepository.findByPresentationId(presentationId)
                 .ifPresent(voiceAnalysis -> {
                     voiceAnalysisRepository.delete(voiceAnalysis);
                     log.info("VoiceAnalysis 삭제 완료: {}", presentationId);
                 });
         
-        // 관련된 SttResult 데이터 삭제
+        // 3. 관련된 SttResult 데이터 삭제
         sttResultRepository.findByPresentationId(presentationId)
                 .ifPresent(sttResult -> {
                     sttResultRepository.delete(sttResult);
                     log.info("SttResult 삭제 완료: {}", presentationId);
                 });
         
-        // 비디오 파일 삭제 (필요시)
+        // 4. 관련된 PresentationComparison 데이터 삭제
+        presentationComparisonRepository.deleteByPresentation1OrPresentation2(presentation);
+        log.info("PresentationComparison 삭제 완료: {}", presentationId);
+        
+        // 5. 비디오 파일 삭제 (필요시)
         if (presentation.getVideoUrl() != null) {
             // TODO: 파일 삭제 로직 구현
         }
         
-        // 프레젠테이션 삭제
+        // 6. 프레젠테이션 삭제
         presentationRepository.delete(presentation);
-        log.info("프레젠테이션 및 관련 댓글 삭제 완료: {}", presentationId);
+        log.info("프레젠테이션 및 관련 데이터 삭제 완료: {}", presentationId);
     }
 
     // 사용자의 모든 프레젠테이션 조회
@@ -539,6 +556,15 @@ public class PresentationService {
             .orElse(null);
     }
 
+    /**
+     * 프레젠테이션의 목표시간 조회
+     */
+    public Integer getGoalTime(UUID presentationId) {
+        log.info("프레젠테이션 {}의 목표시간 조회", presentationId);
 
+        Presentation presentation = presentationRepository.findById(presentationId)
+                .orElseThrow(() -> new RuntimeException("프레젠테이션을 찾을 수 없습니다: " + presentationId));
 
+        return presentation.getGoalTime();
+    }
 } 

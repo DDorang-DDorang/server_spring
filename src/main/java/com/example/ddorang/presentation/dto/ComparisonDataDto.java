@@ -25,9 +25,11 @@ public class ComparisonDataDto {
         private Float pitchAvg;          // 평균 피치
         private Float wpmAvg;            // 분당 단어 수
         
-        // 미래 확장을 위한 필드들 (현재는 null)
-        private Float anxietyScore;      // 불안도 (미구현)
-        private Float eyeContactScore;   // 시선처리 (미구현)
-        private Float pronunciationScore; // 발음 정확성 (미구현)
+        // 음성 분석 등급 (ABCDE)
+        private String intensityGrade;   // 음성 강도 등급
+        private String pitchGrade;       // 피치 등급
+        private String wpmGrade;         // 말하기 속도 등급
+        private String expressionGrade;  // 표정 등급
+        private Float pronunciationScore; // 발음 정확성
     }
 }
