@@ -45,3 +45,4 @@ src/main/resources/application-prod.yml
 uploads/
 uploads/*
 /app.log
+/src/main/resources/logback.xml
