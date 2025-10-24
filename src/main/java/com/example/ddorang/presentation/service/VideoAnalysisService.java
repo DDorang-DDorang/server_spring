@@ -81,6 +81,7 @@ public class VideoAnalysisService {
     }
 
     // 작업 완료 처리, 웹소켓 알림
+    @@TransactionalEventListenerTransactional
     public void completeJob(UUID jobId, Map<String, Object> analysisResult) {
         try {
             log.info("작업 완료 처리 시작: {}", jobId);
@@ -98,7 +99,7 @@ public class VideoAnalysisService {
             job.setStatus(JobStatus.COMPLETED);
             videoAnalysisJobRepository.save(job);
 
-            // 웹소켓 알림 발송
+            // 웹소켓 알림 발송 (트랜잭션 내에서 Lazy Loading 가능)
             sendCompletionNotification(job);
 
             log.info("작업 완료 처리 성공: {}", jobId);
@@ -110,6 +111,7 @@ public class VideoAnalysisService {
     }
 
     // 작업 실패 처리
+    @Transactional
     public void markJobAsFailed(UUID jobId, String errorMessage) {
         try {
             log.error("작업 실패 처리: {} - {}", jobId, errorMessage);
@@ -120,7 +122,7 @@ public class VideoAnalysisService {
             job.markAsFailed(errorMessage);
             videoAnalysisJobRepository.save(job);
 
-            // 실패한 작업도 알림 발행 (사용자에게 실패 알림)
+            // 실패한 작업도 알림 발행 (사용자에게 실패 알림) - 트랜잭션 내에서 Lazy Loading 가능
             sendCompletionNotification(job);
 
         } catch (Exception e) {
