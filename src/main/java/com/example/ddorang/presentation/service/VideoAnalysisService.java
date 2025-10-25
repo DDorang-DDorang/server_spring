@@ -1,12 +1,14 @@
 package com.example.ddorang.presentation.service;
 
 import com.example.ddorang.common.enums.JobStatus;
-import com.example.ddorang.common.service.NotificationService;
 import com.example.ddorang.presentation.entity.VideoAnalysisJob;
+import com.example.ddorang.presentation.event.AnalysisCompleteEvent;
 import com.example.ddorang.presentation.repository.VideoAnalysisJobRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -20,7 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class VideoAnalysisService {
 
     private final VideoAnalysisJobRepository videoAnalysisJobRepository;
-    private final NotificationService notificationService;
+    private final ApplicationEventPublisher eventPublisher;
 
     // 메모리에 결과 임시 저장 (TTL 캐시)
     private final Map<UUID, CacheEntry> resultCache = new ConcurrentHashMap<>();
@@ -80,7 +82,8 @@ public class VideoAnalysisService {
         }
     }
 
-    // 작업 완료 처리, 웹소켓 알림
+    // 작업 완료 처리 - 이벤트 발행
+    @Transactional
     public void completeJob(UUID jobId, Map<String, Object> analysisResult) {
         try {
             log.info("작업 완료 처리 시작: {}", jobId);
@@ -98,8 +101,15 @@ public class VideoAnalysisService {
             job.setStatus(JobStatus.COMPLETED);
             videoAnalysisJobRepository.save(job);
 
-            // 웹소켓 알림 발송
-            sendCompletionNotification(job);
+            // 알림에 필요한 정보 추출 (트랜잭션 내에서 Lazy Loading)
+            UUID userId = job.getPresentation().getTopic().getUser().getUserId();
+            String presentationTitle = job.getPresentation().getTitle();
+            UUID presentationId = job.getPresentation().getId();
+
+            // 이벤트 발행 (트랜잭션 커밋 후 알림 발송됨)
+            eventPublisher.publishEvent(new AnalysisCompleteEvent(
+                jobId, userId, presentationTitle, presentationId, true
+            ));
 
             log.info("작업 완료 처리 성공: {}", jobId);
 
@@ -109,7 +119,8 @@ public class VideoAnalysisService {
         }
     }
 
-    // 작업 실패 처리
+    // 작업 실패 처리 - 이벤트 발행
+    @Transactional
     public void markJobAsFailed(UUID jobId, String errorMessage) {
         try {
             log.error("작업 실패 처리: {} - {}", jobId, errorMessage);
@@ -120,8 +131,15 @@ public class VideoAnalysisService {
             job.markAsFailed(errorMessage);
             videoAnalysisJobRepository.save(job);
 
-            // 실패한 작업도 알림 발행 (사용자에게 실패 알림)
-            sendCompletionNotification(job);
+            // 알림에 필요한 정보 추출 (트랜잭션 내에서 Lazy Loading)
+            UUID userId = job.getPresentation().getTopic().getUser().getUserId();
+            String presentationTitle = job.getPresentation().getTitle();
+            UUID presentationId = job.getPresentation().getId();
+
+            // 실패 이벤트 발행 (트랜잭션 커밋 후 알림 발송됨)
+            eventPublisher.publishEvent(new AnalysisCompleteEvent(
+                jobId, userId, presentationTitle, presentationId, false
+            ));
 
         } catch (Exception e) {
             log.error("실패 처리 중 추가 오류: {}", jobId, e);
@@ -186,22 +204,6 @@ public class VideoAnalysisService {
     }
 
     // === Private 헬퍼 메서드들 ===
-    // 웹소켓 완료 알림 전송
-    private void sendCompletionNotification(VideoAnalysisJob job) {
-        try {
-            UUID userId = job.getPresentation().getTopic().getUser().getUserId();
-            String presentationTitle = job.getPresentation().getTitle();
-            UUID presentationId = job.getPresentation().getId();
-
-            notificationService.sendAnalysisCompleteNotification(userId, presentationTitle, presentationId);
-
-            log.info("완료 알림 발송: {}", job.getId());
-
-        } catch (Exception e) {
-            log.error("완료 알림 발송 실패: {}", job.getId(), e);
-        }
-    }
-
     // 상태별 메세지 생성
     private String getStatusMessage(VideoAnalysisJob job) {
         return switch (job.getStatus()) {

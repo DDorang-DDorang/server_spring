@@ -1,6 +1,6 @@
 package com.example.ddorang.presentation.controller;
 
-import com.example.ddorang.presentation.entity.PresentationComparison;
+import com.example.ddorang.presentation.dto.ComparisonResponseDto;
 import com.example.ddorang.presentation.service.ComparisonService;
 import com.example.ddorang.auth.security.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
@@ -26,7 +26,7 @@ public class ComparisonController {
      */
     @PostMapping("/{presentationId}/compare-with/{otherPresentationId}")
     @PreAuthorize("hasRole('USER')")
-    public ResponseEntity<PresentationComparison> comparePresentations(
+    public ResponseEntity<ComparisonResponseDto> comparePresentations(
             @PathVariable UUID presentationId,
             @PathVariable UUID otherPresentationId,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
@@ -34,7 +34,7 @@ public class ComparisonController {
         log.info("발표 비교 요청 - 사용자: {}, 발표1: {}, 발표2: {}", 
                 userDetails.getUser().getUserId(), presentationId, otherPresentationId);
         
-        PresentationComparison comparison = comparisonService.comparePresentations(
+        ComparisonResponseDto comparison = comparisonService.comparePresentations(
                 userDetails.getUser().getUserId(), presentationId, otherPresentationId);
         
         return ResponseEntity.ok(comparison);
@@ -45,12 +45,12 @@ public class ComparisonController {
      */
     @GetMapping("/comparisons")
     @PreAuthorize("hasRole('USER')")
-    public ResponseEntity<List<PresentationComparison>> getUserComparisons(
+    public ResponseEntity<List<ComparisonResponseDto>> getUserComparisons(
             @AuthenticationPrincipal CustomUserDetails userDetails) {
         
         log.info("사용자 비교 기록 조회 - 사용자: {}", userDetails.getUser().getUserId());
         
-        List<PresentationComparison> comparisons = comparisonService.getUserComparisons(userDetails.getUser().getUserId());
+        List<ComparisonResponseDto> comparisons = comparisonService.getUserComparisons(userDetails.getUser().getUserId());
         
         return ResponseEntity.ok(comparisons);
     }
@@ -60,14 +60,14 @@ public class ComparisonController {
      */
     @GetMapping("/{presentationId}/comparisons")
     @PreAuthorize("hasRole('USER')")
-    public ResponseEntity<List<PresentationComparison>> getComparisonsInvolving(
+    public ResponseEntity<List<ComparisonResponseDto>> getComparisonsInvolving(
             @PathVariable UUID presentationId,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
         
         log.info("발표 관련 비교 기록 조회 - 사용자: {}, 발표: {}", 
                 userDetails.getUser().getUserId(), presentationId);
         
-        List<PresentationComparison> comparisons = comparisonService.getComparisonsInvolving(
+        List<ComparisonResponseDto> comparisons = comparisonService.getComparisonsInvolving(
                 userDetails.getUser().getUserId(), presentationId);
         
         return ResponseEntity.ok(comparisons);
