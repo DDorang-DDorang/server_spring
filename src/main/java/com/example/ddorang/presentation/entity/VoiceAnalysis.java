@@ -58,4 +58,8 @@ public class VoiceAnalysis {
 
     @Column(name = "expression_text", columnDefinition = "TEXT")
     private String expressionText;
+
+    // 감정 분석
+    @Column(name = "emotion_analysis", columnDefinition = "TEXT")
+    private String emotionAnalysis;
 } 

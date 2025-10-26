@@ -60,6 +60,35 @@ public class FastApiPollingService {
         return CompletableFuture.completedFuture(null);
     }
 
+    /**
+     * URL을 실제 파일 경로로 변환
+     * /api/files/videos/... -> uploads/videos/...
+     */
+    private String convertUrlToFilePath(String videoPath) {
+        if (videoPath == null || videoPath.isEmpty()) {
+            return videoPath;
+        }
+        
+        try {
+            // /api/files/videos/ 부분을 uploads/videos/로 변경
+            if (videoPath.startsWith("/api/files/videos/")) {
+                return videoPath.replace("/api/files/videos/", "uploads/videos/");
+            }
+            
+            // 이미 uploads/로 시작하는 경우 그대로 반환
+            if (videoPath.startsWith("uploads/")) {
+                return videoPath;
+            }
+            
+            log.warn("지원하지 않는 비디오 경로 형식: {}", videoPath);
+            return videoPath;
+            
+        } catch (Exception e) {
+            log.error("파일 경로 변환 실패: {}", e.getMessage());
+            return videoPath;
+        }
+    }
+
     // FastAPI /stt 엔드포인트 호출
     private String callFastApiStt(VideoAnalysisJob job) {
         try {
@@ -73,6 +102,10 @@ public class FastApiPollingService {
 
             // 비디오 파일 추가
             String videoPath = job.getVideoPath();
+            
+            // URL을 실제 파일 경로로 변환
+            videoPath = convertUrlToFilePath(videoPath);
+            
             // videoPath가 상대 경로인 경우 절대 경로로 변환
             if (!videoPath.startsWith("/")) {
                 videoPath = System.getProperty("user.dir") + "/" + videoPath;

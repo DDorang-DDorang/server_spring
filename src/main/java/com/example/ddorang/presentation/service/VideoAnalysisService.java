@@ -4,9 +4,11 @@ import com.example.ddorang.common.enums.JobStatus;
 import com.example.ddorang.common.service.NotificationService;
 import com.example.ddorang.presentation.entity.VideoAnalysisJob;
 import com.example.ddorang.presentation.repository.VideoAnalysisJobRepository;
+import com.example.ddorang.presentation.service.VoiceAnalysisService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -21,6 +23,7 @@ public class VideoAnalysisService {
 
     private final VideoAnalysisJobRepository videoAnalysisJobRepository;
     private final NotificationService notificationService;
+    private final VoiceAnalysisService voiceAnalysisService;
 
     // 메모리에 결과 임시 저장 (TTL 캐시)
     private final Map<UUID, CacheEntry> resultCache = new ConcurrentHashMap<>();
@@ -97,6 +100,16 @@ public class VideoAnalysisService {
 
             job.setStatus(JobStatus.COMPLETED);
             videoAnalysisJobRepository.save(job);
+
+            // 분석 결과를 DB에 저장 (VoiceAnalysis, SttResult, PresentationFeedback)
+            try {
+                UUID presentationId = job.getPresentation().getId();
+                voiceAnalysisService.saveAnalysisResults(presentationId, analysisResult);
+                log.info("분석 결과 DB 저장 완료: {}", presentationId);
+            } catch (Exception dbError) {
+                log.error("분석 결과 DB 저장 실패: {}", jobId, dbError);
+                // DB 저장 실패해도 작업은 완료로 처리 (메모리 캐시는 있음)
+            }
 
             // 웹소켓 알림 발송
             sendCompletionNotification(job);
@@ -187,11 +200,16 @@ public class VideoAnalysisService {
 
     // === Private 헬퍼 메서드들 ===
     // 웹소켓 완료 알림 전송
-    private void sendCompletionNotification(VideoAnalysisJob job) {
+    @Transactional(readOnly = true)
+    protected void sendCompletionNotification(VideoAnalysisJob job) {
         try {
-            UUID userId = job.getPresentation().getTopic().getUser().getUserId();
-            String presentationTitle = job.getPresentation().getTitle();
-            UUID presentationId = job.getPresentation().getId();
+            // 연관 엔티티를 미리 로딩하여 LazyInitializationException 방지
+            VideoAnalysisJob jobWithDetails = videoAnalysisJobRepository.findById(job.getId())
+                .orElseThrow(() -> new RuntimeException("작업을 찾을 수 없습니다: " + job.getId()));
+            
+            UUID userId = jobWithDetails.getPresentation().getTopic().getUser().getUserId();
+            String presentationTitle = jobWithDetails.getPresentation().getTitle();
+            UUID presentationId = jobWithDetails.getPresentation().getId();
 
             notificationService.sendAnalysisCompleteNotification(userId, presentationTitle, presentationId);
 

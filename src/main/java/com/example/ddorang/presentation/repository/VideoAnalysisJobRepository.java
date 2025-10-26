@@ -2,6 +2,7 @@ package com.example.ddorang.presentation.repository;
 
 import com.example.ddorang.common.enums.JobStatus;
 import com.example.ddorang.presentation.entity.VideoAnalysisJob;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -53,5 +54,10 @@ public interface VideoAnalysisJobRepository extends JpaRepository<VideoAnalysisJ
     @Query("SELECT vaj FROM VideoAnalysisJob vaj WHERE vaj.createdAt < :cutoffTime " +
            "AND vaj.status IN (com.example.ddorang.common.enums.JobStatus.COMPLETED, com.example.ddorang.common.enums.JobStatus.FAILED)")
     List<VideoAnalysisJob> findOldFinishedJobs(@Param("cutoffTime") LocalDateTime cutoffTime);
+
+    // 연관 엔티티를 미리 로딩하여 조회 (LazyInitializationException 방지)
+    @EntityGraph(attributePaths = {"presentation", "presentation.topic", "presentation.topic.user"})
+    @Override
+    Optional<VideoAnalysisJob> findById(UUID id);
 
 }

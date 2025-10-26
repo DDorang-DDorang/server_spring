@@ -43,13 +43,13 @@ public class PresentationService {
     private final SttResultRepository sttResultRepository;
     private final PresentationFeedbackRepository presentationFeedbackRepository;
     private final PresentationComparisonRepository presentationComparisonRepository;
+    private final VideoAnalysisJobRepository videoAnalysisJobRepository;
     private final FileStorageService fileStorageService;
     private final FastApiService fastApiService;
     private final VoiceAnalysisService voiceAnalysisService;
     private final TeamRepository teamRepository;
     private final TeamMemberRepository teamMemberRepository;
     private final UserRepository userRepository;
-    private final VideoAnalysisJobRepository videoAnalysisJobRepository;
     
     // 특정 토픽의 프레젠테이션 목록 조회
     public List<Presentation> getPresentationsByTopicId(UUID topicId) {
@@ -251,7 +251,23 @@ public class PresentationService {
             try {
                 // 기존 파일 삭제 (필요시)
                 if (presentation.getVideoUrl() != null) {
-                    // TODO: 기존 파일 삭제 로직 구현
+                    try {
+                        String oldVideoUrl = presentation.getVideoUrl();
+                        log.info("기존 비디오 파일 삭제 시도: {}", oldVideoUrl);
+                        
+                        String oldFilePath = extractFilePathFromUrl(oldVideoUrl);
+                        if (oldFilePath != null) {
+                            boolean deleted = fileStorageService.deleteFile(oldFilePath);
+                            if (deleted) {
+                                log.info("기존 비디오 파일 삭제 완료: {}", oldFilePath);
+                            } else {
+                                log.warn("기존 비디오 파일 삭제 실패 (파일이 존재하지 않을 수 있음): {}", oldFilePath);
+                            }
+                        }
+                    } catch (Exception e) {
+                        log.error("기존 비디오 파일 삭제 중 오류 발생: {}", e.getMessage(), e);
+                        // 기존 파일 삭제 실패해도 새 파일 업로드는 계속 진행
+                    }
                 }
                 
                 // 새 파일 저장
@@ -309,7 +325,14 @@ public class PresentationService {
                     log.info("SttResult 삭제 완료: {}", presentationId);
                 });
         
-        // 4. 관련된 PresentationComparison 데이터 삭제
+        // 4. 관련된 VideoAnalysisJob 데이터 삭제
+        List<VideoAnalysisJob> analysisJobs = videoAnalysisJobRepository.findByPresentationIdOrderByCreatedAtDesc(presentationId);
+        if (!analysisJobs.isEmpty()) {
+            videoAnalysisJobRepository.deleteAll(analysisJobs);
+            log.info("VideoAnalysisJob 삭제 완료: {} ({}개 삭제)", presentationId, analysisJobs.size());
+        }
+        
+        // 5. 관련된 PresentationComparison 데이터 삭제
         try {
             // 먼저 개별 삭제 시도
             List<PresentationComparison> comparisons = presentationComparisonRepository.findComparisonsInvolving(
@@ -332,12 +355,33 @@ public class PresentationService {
             }
         }
         
-        // 5. 비디오 파일 삭제 (필요시)
+        // 6. 비디오 파일 삭제 (필요시)
         if (presentation.getVideoUrl() != null) {
-            // TODO: 파일 삭제 로직 구현
+            try {
+                // videoUrl에서 실제 파일 경로 추출
+                String videoUrl = presentation.getVideoUrl();
+                log.info("비디오 파일 삭제 시도: {}", videoUrl);
+                
+                // URL에서 파일 경로 추출 (/api/files/videos/... -> uploads/videos/...)
+                String filePath = extractFilePathFromUrl(videoUrl);
+                
+                if (filePath != null) {
+                    boolean deleted = fileStorageService.deleteFile(filePath);
+                    if (deleted) {
+                        log.info("비디오 파일 삭제 완료: {}", filePath);
+                    } else {
+                        log.warn("비디오 파일 삭제 실패 (파일이 존재하지 않을 수 있음): {}", filePath);
+                    }
+                } else {
+                    log.warn("비디오 파일 경로를 추출할 수 없습니다: {}", videoUrl);
+                }
+            } catch (Exception e) {
+                log.error("비디오 파일 삭제 중 오류 발생: {}", e.getMessage(), e);
+                // 파일 삭제 실패해도 프레젠테이션 삭제는 계속 진행
+            }
         }
         
-        // 6. 프레젠테이션 삭제
+        // 7. 프레젠테이션 삭제
         presentationRepository.delete(presentation);
         log.info("프레젠테이션 및 관련 데이터 삭제 완료: {}", presentationId);
     }
@@ -539,6 +583,42 @@ public class PresentationService {
         
         return presentation.getGoalTime();
     }
+
+    /**
+     * 프레젠테이션 존재 여부 확인
+     */
+    public boolean hasPresentation(UUID presentationId) {
+        return presentationRepository.existsById(presentationId);
+    }
+    /**
+     * URL에서 실제 파일 경로 추출
+     * /api/files/videos/userId/projectId/date/fileName -> uploads/videos/userId/projectId/date/fileName
+     */
+    private String extractFilePathFromUrl(String videoUrl) {
+        if (videoUrl == null || videoUrl.isEmpty()) {
+            return null;
+        }
+        
+        try {
+            // /api/files/videos/ 부분을 uploads/videos/로 변경
+            if (videoUrl.startsWith("/api/files/videos/")) {
+                return videoUrl.replace("/api/files/videos/", "uploads/videos/");
+            }
+            
+            // 이미 uploads/로 시작하는 경우 그대로 반환
+            if (videoUrl.startsWith("uploads/")) {
+                return videoUrl;
+            }
+            
+            log.warn("지원하지 않는 비디오 URL 형식: {}", videoUrl);
+            return null;
+            
+        } catch (Exception e) {
+            log.error("파일 경로 추출 실패: {}", e.getMessage());
+            return null;
+        }
+    }
+
     // 비동기 영상 분석 관련 메서드들
     @Transactional
     public VideoAnalysisJob createVideoAnalysisJob(Presentation presentation, String originalFilename, Long fileSize) {

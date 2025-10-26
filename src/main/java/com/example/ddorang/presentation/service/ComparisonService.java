@@ -130,6 +130,8 @@ public class ComparisonService {
                 .pitchGrade(analysis1.getPitchGrade())
                 .wpmGrade(analysis1.getWpmGrade())
                 .expressionGrade(analysis1.getExpressionGrade())
+                .expressionText(analysis1.getExpressionText())
+                .emotionAnalysis(analysis1.getEmotionAnalysis())
                 .pronunciationScore(pronunciationScore1)
                 .build();
                 
@@ -146,6 +148,8 @@ public class ComparisonService {
                 .pitchGrade(analysis2.getPitchGrade())
                 .wpmGrade(analysis2.getWpmGrade())
                 .expressionGrade(analysis2.getExpressionGrade())
+                .expressionText(analysis2.getExpressionText())
+                .emotionAnalysis(analysis2.getEmotionAnalysis())
                 .pronunciationScore(pronunciationScore2)
                 .build();
         
