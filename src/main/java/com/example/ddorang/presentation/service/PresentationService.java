@@ -4,11 +4,6 @@ import com.example.ddorang.presentation.entity.Presentation;
 import com.example.ddorang.presentation.entity.PresentationComparison;
 import com.example.ddorang.presentation.entity.Topic;
 import com.example.ddorang.presentation.repository.*;
-import com.example.ddorang.presentation.repository.PresentationRepository;
-import com.example.ddorang.presentation.repository.TopicRepository;
-import com.example.ddorang.presentation.repository.VoiceAnalysisRepository;
-import com.example.ddorang.presentation.repository.SttResultRepository;
-import com.example.ddorang.presentation.repository.VideoAnalysisJobRepository;
 import com.example.ddorang.presentation.entity.VideoAnalysisJob;
 import com.example.ddorang.common.service.FileStorageService;
 import com.example.ddorang.presentation.service.FastApiService;
@@ -572,17 +567,6 @@ public class PresentationService {
         // 기존 deletePresentation 로직 재사용
         deletePresentation(presentationId);
     }
-    /**
-     * 프레젠테이션의 목표시간 조회
-     */
-    public Integer getGoalTime(UUID presentationId) {
-        log.info("프레젠테이션 {}의 목표시간 조회", presentationId);
-        
-        Presentation presentation = presentationRepository.findById(presentationId)
-                .orElseThrow(() -> new RuntimeException("프레젠테이션을 찾을 수 없습니다: " + presentationId));
-        
-        return presentation.getGoalTime();
-    }
 
     /**
      * 프레젠테이션 존재 여부 확인
@@ -669,5 +653,18 @@ public class PresentationService {
     public VideoAnalysisJob getLatestCompletedAnalysis(UUID presentationId) {
         return videoAnalysisJobRepository.findLatestCompletedJobByPresentationId(presentationId)
             .orElse(null);
+    }
+
+
+    /**
+     * 프레젠테이션의 목표시간 조회
+     */
+    public Integer getGoalTime(UUID presentationId) {
+        log.info("프레젠테이션 {}의 목표시간 조회", presentationId);
+
+        Presentation presentation = presentationRepository.findById(presentationId)
+                .orElseThrow(() -> new RuntimeException("프레젠테이션을 찾을 수 없습니다: " + presentationId));
+
+        return presentation.getGoalTime();
     }
 } 

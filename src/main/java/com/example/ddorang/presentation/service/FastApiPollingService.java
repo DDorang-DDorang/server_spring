@@ -5,12 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.FileSystemResource;
-import org.springframework.http.*;
+import org.springframework.http.ResponseEntity;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 
 import java.io.File;
@@ -24,23 +21,31 @@ import java.util.concurrent.CompletableFuture;
 public class FastApiPollingService {
 
     private final VideoAnalysisService videoAnalysisService;
+    private final VideoChunkService videoChunkService;
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
 
     @Value("${fastapi.base-url:http://localhost:8000}")
     private String fastApiUrl;
 
+    @Value("${app.upload.dir:uploads}")
+    private String uploadDir;
+
     // 비동기 영상 분석 시작
     @Async
     public CompletableFuture<Void> startVideoAnalysis(VideoAnalysisJob job) {
         log.info("🎬 FastAPI 비동기 분석 시작: {} - {}", job.getId(), job.getPresentation().getTitle());
+        log.debug("DEBUG: VideoAnalysisJob - videoPath: {}, presentationId: {}", job.getVideoPath(), job.getPresentation().getId());
+        log.debug("DEBUG: VideoChunkService bean: {}", videoChunkService != null ? "OK" : "NULL");
 
         try {
             // FastAPI /stt 엔드포인트 호출
+            log.debug("DEBUG: callFastApiStt() 호출 직전");
             String fastApiJobId = callFastApiStt(job);
+            log.debug("DEBUG: callFastApiStt() 호출 직후 - 반환값: {}", fastApiJobId);
 
             if (fastApiJobId == null) {
-                log.warn("FastAPI 초기 호출 실패, 백그라운드 처리 대기 중: {}", job.getId());
+                log.warn("⚠️ FastAPI 초기 호출 실패, 백그라운드 처리 대기 중: {}", job.getId());
                 videoAnalysisService.updateJobStatus(job.getId(), "processing", "분석 서버 연결 중입니다. 잠시만 기다려주세요...");
                 // 실패로 마킹하지 않고 processing 상태 유지하여 폴링 기회 제공
                 return CompletableFuture.completedFuture(null);
@@ -60,93 +65,66 @@ public class FastApiPollingService {
         return CompletableFuture.completedFuture(null);
     }
 
-    /**
-     * URL을 실제 파일 경로로 변환
-     * /api/files/videos/... -> uploads/videos/...
-     */
-    private String convertUrlToFilePath(String videoPath) {
-        if (videoPath == null || videoPath.isEmpty()) {
-            return videoPath;
-        }
-        
-        try {
-            // /api/files/videos/ 부분을 uploads/videos/로 변경
-            if (videoPath.startsWith("/api/files/videos/")) {
-                return videoPath.replace("/api/files/videos/", "uploads/videos/");
-            }
-            
-            // 이미 uploads/로 시작하는 경우 그대로 반환
-            if (videoPath.startsWith("uploads/")) {
-                return videoPath;
-            }
-            
-            log.warn("지원하지 않는 비디오 경로 형식: {}", videoPath);
-            return videoPath;
-            
-        } catch (Exception e) {
-            log.error("파일 경로 변환 실패: {}", e.getMessage());
-            return videoPath;
-        }
-    }
 
-    // FastAPI /stt 엔드포인트 호출
+    // FastAPI /stt 엔드포인트 호출 (청크 업로드 방식)
     private String callFastApiStt(VideoAnalysisJob job) {
+        log.debug("DEBUG: callFastApiStt() 메서드 진입");
+
         try {
-            log.info("FastAPI STT 호출: {}", job.getVideoPath());
+            log.info("📹 FastAPI STT 호출 (청크 모드): {}", job.getVideoPath());
 
-            // 멀티파트 요청 구성
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.MULTIPART_FORM_DATA);
-
-            MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-
-            // 비디오 파일 추가
+            // 비디오 파일 경로 처리
             String videoPath = job.getVideoPath();
-            
-            // URL을 실제 파일 경로로 변환
-            videoPath = convertUrlToFilePath(videoPath);
-            
-            // videoPath가 상대 경로인 경우 절대 경로로 변환
+
+            log.debug("DEBUG: 원본 videoPath: {}", videoPath);
+
+            // 웹 URL을 실제 파일 경로로 변환
+            // /api/files/videos/... → uploads/videos/...
+            if (videoPath.startsWith("/api/files/videos/")) {
+                String relativePath = videoPath.substring("/api/files/videos/".length());
+                videoPath = uploadDir + "/videos/" + relativePath;
+                log.debug("DEBUG: 웹 URL을 파일 경로로 변환: {}", videoPath);
+            }
+
+            // 상대 경로인 경우 절대 경로로 변환
             if (!videoPath.startsWith("/")) {
                 videoPath = System.getProperty("user.dir") + "/" + videoPath;
+                log.debug("DEBUG: 절대 경로로 변환: {}", videoPath);
             }
 
             File videoFile = new File(videoPath);
+            log.debug("DEBUG: 파일 존재 여부: {}, 크기: {}MB",
+                videoFile.exists(),
+                videoFile.exists() ? videoFile.length() / (1024 * 1024) : 0);
+
             if (!videoFile.exists()) {
-                log.error("비디오 파일 없음: {}", videoPath);
+                log.error("❌ 비디오 파일 없음: {}", videoPath);
                 return null;
             }
 
-            body.add("video", new FileSystemResource(videoFile));
-
-            // 메타데이터 추가
+            // 메타데이터 구성
             Map<String, Object> metadata = new HashMap<>();
-            metadata.put("target_time", job.getPresentation().getGoalTime() != null ?
-                job.getPresentation().getGoalTime() + ":00" : "6:00");
-            body.add("metadata", objectMapper.writeValueAsString(metadata));
+            String targetTime = job.getPresentation().getGoalTime() != null ?
+                job.getPresentation().getGoalTime() + ":00" : "6:00";
+            metadata.put("target_time", targetTime);
+            log.debug("DEBUG: 메타데이터 구성 완료 - target_time: {}", targetTime);
 
-            HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
+            // VideoChunkService를 통해 청크 업로드
+            log.debug("DEBUG: videoChunkService.uploadVideoInChunks() 호출 직전");
+            log.debug("DEBUG: videoChunkService는 null? {}", videoChunkService == null);
 
-            // FastAPI 호출
-            ResponseEntity<Map> response = restTemplate.exchange(
-                fastApiUrl + "/stt",
-                HttpMethod.POST,
-                requestEntity,
-                Map.class
-            );
+            String fastApiJobId = videoChunkService.uploadVideoInChunks(videoFile, metadata);
 
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                String fastApiJobId = (String) response.getBody().get("job_id");
-                log.info("FastAPI 호출 성공 - job_id: {}", fastApiJobId);
-                return fastApiJobId;
-            } else {
-                log.error("FastAPI 응답 오류: {}", response.getStatusCode());
-            }
+            log.debug("DEBUG: videoChunkService.uploadVideoInChunks() 호출 완료 - 반환값: {}", fastApiJobId);
+            log.info("✅ FastAPI 청크 업로드 성공 - job_id: {}", fastApiJobId);
+            return fastApiJobId;
 
         } catch (Exception e) {
-            log.error("FastAPI /stt 호출 실패", e);
+            log.error("❌ FastAPI /stt 청크 업로드 실패 - 예외 타입: {}, 메시지: {}",
+                e.getClass().getSimpleName(), e.getMessage(), e);
         }
 
+        log.debug("DEBUG: callFastApiStt() null 반환");
         return null;
     }
 

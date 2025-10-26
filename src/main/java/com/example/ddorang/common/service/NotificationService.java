@@ -4,6 +4,7 @@ import com.example.ddorang.auth.entity.User;
 import com.example.ddorang.auth.repository.UserRepository;
 import com.example.ddorang.common.entity.Notification;
 import com.example.ddorang.common.repository.NotificationRepository;
+import com.example.ddorang.presentation.event.AnalysisCompleteEvent;
 import com.example.ddorang.team.entity.Team;
 import com.example.ddorang.team.entity.TeamMember;
 import com.example.ddorang.team.repository.TeamMemberRepository;
@@ -11,8 +12,12 @@ import com.example.ddorang.team.repository.TeamRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.util.HashMap;
 import java.util.List;
@@ -193,17 +198,45 @@ public class NotificationService {
             notificationData.put("relatedId", notification.getRelatedId());
             notificationData.put("isRead", notification.getIsRead());
             notificationData.put("createdAt", notification.getCreatedAt());
-            
+
             // 특정 사용자에게만 알림 발송
             messagingTemplate.convertAndSendToUser(
                 userId.toString(),
                 "/queue/notifications",
                 notificationData
             );
-            
+
             log.info("실시간 알림 발송 완료 - 사용자ID: {}, 알림타입: {}", userId, notification.getType());
         } catch (Exception e) {
             log.error("실시간 알림 발송 실패 - 사용자ID: {}, 알림ID: {}", userId, notification.getNotificationId(), e);
+        }
+    }
+
+    /**
+     * 영상 분석 완료 이벤트 리스너
+     * 트랜잭션 커밋 후 비동기로 알림 발송
+     *
+     * @param event 분석 완료 이벤트
+     */
+    @Async
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void handleAnalysisCompleteEvent(AnalysisCompleteEvent event) {
+        try {
+            log.info("영상 분석 완료 이벤트 수신 - jobId: {}, 성공여부: {}", event.getJobId(), event.isSuccess());
+
+            // 기존 알림 발송 메서드 호출
+            sendAnalysisCompleteNotification(
+                event.getUserId(),
+                event.getPresentationTitle(),
+                event.getPresentationId()
+            );
+
+            log.info("영상 분석 알림 발송 완료 - jobId: {}", event.getJobId());
+
+        } catch (Exception e) {
+            // 알림 실패해도 DB는 이미 저장됨 (트랜잭션 커밋 후 실행)
+            log.error("영상 분석 알림 발송 실패 (DB는 이미 저장됨) - jobId: {}", event.getJobId(), e);
         }
     }
 }

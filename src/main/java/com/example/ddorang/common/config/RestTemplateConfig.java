@@ -45,7 +45,10 @@ public class RestTemplateConfig {
                 log.info("URI: {}", request.getURI());
                 log.info("Method: {}", request.getMethod());
                 log.info("Headers: {}", request.getHeaders());
-                if (!request.getHeaders().getContentType().includes(MediaType.MULTIPART_FORM_DATA)) {
+
+                // Content-Type이 null이 아니고 multipart가 아닐 때만 body 로깅
+                MediaType contentType = request.getHeaders().getContentType();
+                if (contentType == null || !contentType.includes(MediaType.MULTIPART_FORM_DATA)) {
                     if (body.length > 0 && body.length < 2048) {
                         log.info("Body preview (first {} bytes): {}", Math.min(body.length, 64), new String(body, 0, Math.min(body.length, 64), StandardCharsets.UTF_8));
                     }
