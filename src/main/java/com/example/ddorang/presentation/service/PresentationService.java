@@ -8,6 +8,8 @@ import com.example.ddorang.presentation.entity.VideoAnalysisJob;
 import com.example.ddorang.common.service.FileStorageService;
 import com.example.ddorang.presentation.service.FastApiService;
 import com.example.ddorang.presentation.service.VoiceAnalysisService;
+import com.example.ddorang.presentation.service.FastApiPollingService;
+import com.example.ddorang.presentation.service.VideoAnalysisService;
 import com.example.ddorang.team.entity.Team;
 import com.example.ddorang.team.entity.TeamMember;
 import com.example.ddorang.team.repository.TeamRepository;
@@ -42,6 +44,8 @@ public class PresentationService {
     private final FileStorageService fileStorageService;
     private final FastApiService fastApiService;
     private final VoiceAnalysisService voiceAnalysisService;
+    private final FastApiPollingService fastApiPollingService;
+    private final VideoAnalysisService videoAnalysisService;
     private final TeamRepository teamRepository;
     private final TeamMemberRepository teamMemberRepository;
     private final UserRepository userRepository;
@@ -203,6 +207,31 @@ public class PresentationService {
         
         Presentation savedPresentation = presentationRepository.save(presentation);
         log.info("프레젠테이션 생성 완료: {}", savedPresentation.getId());
+
+        // 비디오 파일이 업로드되었으면 자동으로 분석 작업 시작
+        if (videoFile != null && !videoFile.isEmpty() && savedPresentation.getVideoUrl() != null) {
+            try {
+                log.info("비디오 파일이 업로드되었으므로 자동으로 분석 작업을 시작합니다 - 프레젠테이션: {}", savedPresentation.getId());
+                
+                // 비동기 분석 작업 생성
+                VideoAnalysisJob job = createVideoAnalysisJob(
+                    savedPresentation,
+                    videoFile.getOriginalFilename(),
+                    videoFile.getSize()
+                );
+                
+                // DB에 초기 상태 저장
+                videoAnalysisService.initializeJob(job);
+                
+                // FastAPI 폴링 시작 (백그라운드)
+                fastApiPollingService.startVideoAnalysis(job);
+                
+                log.info("자동 분석 작업이 시작되었습니다 - 작업 ID: {}", job.getId());
+            } catch (Exception e) {
+                log.error("자동 분석 작업 시작 실패: {}", e.getMessage(), e);
+                // 분석 작업 실패해도 프레젠테이션 생성은 성공으로 처리
+            }
+        }
 
             return savedPresentation;
             

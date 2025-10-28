@@ -4,6 +4,7 @@ import com.example.ddorang.auth.entity.User;
 import com.example.ddorang.auth.repository.UserRepository;
 import com.example.ddorang.common.entity.Notification;
 import com.example.ddorang.common.repository.NotificationRepository;
+import com.example.ddorang.mail.service.EmailService;
 import com.example.ddorang.presentation.event.AnalysisCompleteEvent;
 import com.example.ddorang.team.entity.Team;
 import com.example.ddorang.team.entity.TeamMember;
@@ -35,6 +36,7 @@ public class NotificationService {
     private final TeamRepository teamRepository;
     private final UserRepository userRepository;
     private final SimpMessagingTemplate messagingTemplate;
+    private final EmailService emailService;
 
     /**
      * 팀 발표에 댓글이 달렸을 때 팀원들에게 알림 발송
@@ -135,8 +137,11 @@ public class NotificationService {
             Notification savedNotification = notificationRepository.save(notification);
             log.info("AI 분석 완료 알림 발송 - 수신자 ID: {}, 발표: {}", userId, presentationTitle);
             
-            // 실시간 알림 발송
+            // 실시간 웹 알림 발송
             sendRealtimeNotification(userId, savedNotification);
+            
+            // 이메일 알림 발송
+            sendAnalysisCompleteEmail(user.getEmail(), user.getName(), presentationTitle, presentationId);
             
             // 사용자별 알림 15개 제한 처리
             cleanupUserNotifications(userId);
@@ -175,8 +180,17 @@ public class NotificationService {
             
             if (notificationCount > 15) {
                 int deleteCount = (int)(notificationCount - 15);
-                notificationRepository.deleteOldestNotifications(userId, deleteCount);
-                log.info("알림 정리 완료 - 사용자ID: {}, 삭제된 알림: {}개", userId, deleteCount);
+                
+                // MySQL LIMIT 제한을 피하기 위해 두 단계로 처리
+                // 1. 삭제할 알림 ID 목록 조회
+                List<UUID> oldestIds = notificationRepository.findOldestNotificationIds(userId);
+                
+                // 2. 실제 삭제 (deleteCount만큼만)
+                if (oldestIds.size() > deleteCount) {
+                    List<UUID> idsToDelete = oldestIds.subList(0, deleteCount);
+                    notificationRepository.deleteNotificationsByIds(idsToDelete);
+                    log.info("알림 정리 완료 - 사용자ID: {}, 삭제된 알림: {}개", userId, idsToDelete.size());
+                }
             }
         } catch (Exception e) {
             log.error("알림 정리 중 오류 발생 - 사용자ID: {}", userId, e);
@@ -184,7 +198,7 @@ public class NotificationService {
     }
 
     /**
-     * 실시간 알림 발솠
+     * 실시간 웹 알림 발송
      * @param userId 사용자 ID
      * @param notification 알림 객체
      */
@@ -206,9 +220,26 @@ public class NotificationService {
                 notificationData
             );
 
-            log.info("실시간 알림 발송 완료 - 사용자ID: {}, 알림타입: {}", userId, notification.getType());
+            log.info("실시간 웹 알림 발송 완료 - 사용자ID: {}, 알림타입: {}", userId, notification.getType());
         } catch (Exception e) {
-            log.error("실시간 알림 발송 실패 - 사용자ID: {}, 알림ID: {}", userId, notification.getNotificationId(), e);
+            log.error("실시간 웹 알림 발송 실패 - 사용자ID: {}, 알림ID: {}", userId, notification.getNotificationId(), e);
+        }
+    }
+
+    /**
+     * 이메일 알림 발송
+     * @param userEmail 사용자 이메일
+     * @param userName 사용자 이름
+     * @param presentationTitle 발표 제목
+     * @param presentationId 발표 ID
+     */
+    @Async
+    protected void sendAnalysisCompleteEmail(String userEmail, String userName, String presentationTitle, UUID presentationId) {
+        try {
+            emailService.sendAnalysisCompleteEmail(userEmail, userName, presentationTitle, presentationId);
+            log.info("이메일 알림 발송 완료 - 수신자: {}", userEmail);
+        } catch (Exception e) {
+            log.error("이메일 알림 발송 실패 - 수신자: {}", userEmail, e);
         }
     }
 

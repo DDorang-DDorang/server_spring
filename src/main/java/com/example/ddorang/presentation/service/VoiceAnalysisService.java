@@ -10,8 +10,6 @@ import com.example.ddorang.presentation.repository.PresentationRepository;
 import com.example.ddorang.presentation.repository.PresentationFeedbackRepository;
 import com.example.ddorang.presentation.dto.VoiceAnalysisResponse;
 import com.example.ddorang.presentation.dto.SttResultResponse;
-import com.example.ddorang.common.service.NotificationService;
-import com.example.ddorang.auth.entity.User;
 import com.example.ddorang.presentation.dto.PresentationFeedbackResponse;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -35,7 +33,6 @@ public class VoiceAnalysisService {
     private final VoiceAnalysisRepository voiceAnalysisRepository;
     private final SttResultRepository sttResultRepository;
     private final PresentationRepository presentationRepository;
-    private final NotificationService notificationService;
     private final PresentationFeedbackRepository presentationFeedbackRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -77,24 +74,7 @@ public class VoiceAnalysisService {
             saveSttResult(presentation, analysisResult);
             savePresentationFeedback(presentation, analysisResult);
 
-            // AI 분석 완료 알림 발송 (별도 트랜잭션으로 처리)
-        User owner = presentation.getTopic().getUser();
-        if (owner != null) {
-                log.info("알림 발송 시작: 사용자 {}", owner.getUserId());
-                try {
-            notificationService.sendAnalysisCompleteNotification(
-                owner.getUserId(), 
-                presentation.getTitle(), 
-                presentationId
-            );
-                    log.info("알림 발송 완료");
-                } catch (Exception notificationError) {
-                    log.error("알림 발송 실패 (분석 결과 저장에는 영향 없음): {}", notificationError.getMessage());
-                    // 알림 발송 실패해도 분석 결과 저장에는 영향을 주지 않음
-                }
-            } else {
-                log.warn("프레젠테이션 소유자를 찾을 수 없습니다: {}", presentationId);
-            }
+            // 알림은 VideoAnalysisService의 이벤트 리스너를 통해 자동으로 발송됨
         } catch (Exception e) {
             log.error("분석 결과 저장 중 오류 발생: {}", presentationId, e);
             throw e;
