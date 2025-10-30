@@ -39,7 +39,7 @@ public class VideoAnalysisService {
 
         public CacheEntry(Map<String, Object> data) {
             this.data = data;
-            this.expireTime = LocalDateTime.now().plusDays(7); // 7일 후 만료
+            this.expireTime = LocalDateTime.now().plusHours(24); // 24시간 후 만료
         }
 
         public boolean isExpired() {
@@ -93,7 +93,7 @@ public class VideoAnalysisService {
         try {
             log.info("작업 완료 처리 시작: {}", jobId);
 
-            // 분석 결과를 메모리 캐시에 저장 (7일간 보관)
+            // 분석 결과를 메모리 캐시에 저장 (24시간 보관)
             resultCache.put(jobId, new CacheEntry(analysisResult));
 
             // 만료된 캐시 엔트리 정리
