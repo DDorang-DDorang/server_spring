@@ -16,31 +16,52 @@ import java.util.UUID;
 @Repository
 public interface VideoAnalysisJobRepository extends JpaRepository<VideoAnalysisJob, UUID> {
 
-    // 특정 발표의 모든 작업을 최신 순으로 조회
-    @Query("SELECT vaj FROM VideoAnalysisJob vaj WHERE vaj.presentation.id = :presentationId " +
+    // 특정 발표의 모든 작업을 최신 순으로 조회 (Fetch Join으로 N+1 쿼리 방지)
+    @Query("SELECT vaj FROM VideoAnalysisJob vaj " +
+           "JOIN FETCH vaj.presentation p " +
+           "JOIN FETCH p.topic t " +
+           "JOIN FETCH t.user " +
+           "WHERE p.id = :presentationId " +
            "ORDER BY vaj.createdAt DESC")
     List<VideoAnalysisJob> findByPresentationIdOrderByCreatedAtDesc(@Param("presentationId") UUID presentationId);
 
-    // 특정 발표의 진행 중인 작업 조회 (중복 작업 방지용)
-    @Query("SELECT vaj FROM VideoAnalysisJob vaj WHERE vaj.presentation.id = :presentationId " +
+    // 특정 발표의 진행 중인 작업 조회 (중복 작업 방지용, Fetch Join으로 N+1 방지)
+    @Query("SELECT vaj FROM VideoAnalysisJob vaj " +
+           "JOIN FETCH vaj.presentation p " +
+           "JOIN FETCH p.topic t " +
+           "JOIN FETCH t.user " +
+           "WHERE p.id = :presentationId " +
            "AND vaj.status IN (com.example.ddorang.common.enums.JobStatus.PENDING, com.example.ddorang.common.enums.JobStatus.PROCESSING)")
     Optional<VideoAnalysisJob> findActiveJobByPresentationId(@Param("presentationId") UUID presentationId);
 
-   // 특정 발표의 가장 최근 완료된 작업 조회
-    @Query("SELECT vaj FROM VideoAnalysisJob vaj WHERE vaj.presentation.id = :presentationId " +
-           "AND vaj.status = com.example.ddorang.common.enums.JobStatus.COMPLETED ORDER BY vaj.createdAt DESC")
+   // 특정 발표의 가장 최근 완료된 작업 조회 (Fetch Join으로 N+1 방지)
+    @Query("SELECT vaj FROM VideoAnalysisJob vaj " +
+           "JOIN FETCH vaj.presentation p " +
+           "JOIN FETCH p.topic t " +
+           "JOIN FETCH t.user " +
+           "WHERE p.id = :presentationId " +
+           "AND vaj.status = com.example.ddorang.common.enums.JobStatus.COMPLETED " +
+           "ORDER BY vaj.createdAt DESC")
     Optional<VideoAnalysisJob> findLatestCompletedJobByPresentationId(@Param("presentationId") UUID presentationId);
 
     // 상태별 작업 조회 (생성 시간 순)
     List<VideoAnalysisJob> findByStatusOrderByCreatedAt(JobStatus status);
 
-   // 사용자의 모든 작업 조회 (최신 순)
-    @Query("SELECT vaj FROM VideoAnalysisJob vaj WHERE vaj.presentation.topic.user.userId = :userId " +
+   // 사용자의 모든 작업 조회 (최신 순, Fetch Join으로 N+1 방지)
+    @Query("SELECT vaj FROM VideoAnalysisJob vaj " +
+           "JOIN FETCH vaj.presentation p " +
+           "JOIN FETCH p.topic t " +
+           "JOIN FETCH t.user u " +
+           "WHERE u.userId = :userId " +
            "ORDER BY vaj.createdAt DESC")
     List<VideoAnalysisJob> findByUserIdOrderByCreatedAtDesc(@Param("userId") UUID userId);
 
-    // 장시간 처리 중인 작업 조회 (데드락 감지용)
-    @Query("SELECT vaj FROM VideoAnalysisJob vaj WHERE vaj.status = com.example.ddorang.common.enums.JobStatus.PROCESSING " +
+    // 장시간 처리 중인 작업 조회 (데드락 감지용, Fetch Join으로 N+1 방지)
+    @Query("SELECT vaj FROM VideoAnalysisJob vaj " +
+           "JOIN FETCH vaj.presentation p " +
+           "JOIN FETCH p.topic t " +
+           "JOIN FETCH t.user " +
+           "WHERE vaj.status = com.example.ddorang.common.enums.JobStatus.PROCESSING " +
            "AND vaj.createdAt < :cutoffTime")
     List<VideoAnalysisJob> findStuckJobs(@Param("cutoffTime") LocalDateTime cutoffTime);
 
