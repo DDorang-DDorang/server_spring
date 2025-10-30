@@ -22,6 +22,7 @@ public class FastApiPollingService {
 
     private final VideoAnalysisService videoAnalysisService;
     private final VideoChunkService videoChunkService;
+    private final VideoCompressionService videoCompressionService;
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
 
@@ -100,18 +101,44 @@ public class FastApiPollingService {
                 return null;
             }
 
-            // 메타데이터 구성
+            // ===== 1. 영상 압축 (480p) =====
+            File compressedFile = null;
+            File fileToUpload = videoFile; // 기본은 원본 파일
+
+            try {
+                log.info("🎬 영상 압축 시작 (480p)");
+                videoAnalysisService.updateJobStatus(job.getId(), "processing", "영상 압축 중...");
+
+                compressedFile = videoCompressionService.compressTo480p(videoFile);
+                fileToUpload = compressedFile; // 압축 성공 시 압축된 파일 사용
+
+                log.info("영상 압축 완료: {}MB → {}MB",
+                    videoFile.length() / (1024 * 1024),
+                    compressedFile.length() / (1024 * 1024));
+
+            } catch (Exception e) {
+                log.warn("영상 압축 실패, 원본 파일로 진행: {}", e.getMessage());
+                // 압축 실패 시 원본 파일 사용 (fileToUpload는 이미 videoFile)
+            }
+
+            // ===== 2. 메타데이터 구성 =====
             Map<String, Object> metadata = new HashMap<>();
             String targetTime = job.getPresentation().getGoalTime() != null ?
                 job.getPresentation().getGoalTime() + ":00" : "6:00";
             metadata.put("target_time", targetTime);
             log.debug("DEBUG: 메타데이터 구성 완료 - target_time: {}", targetTime);
 
-            // VideoChunkService를 통해 청크 업로드
+            // ===== 3. 청크 업로드 =====
+            videoAnalysisService.updateJobStatus(job.getId(), "processing", "영상 업로드 중...");
             log.debug("DEBUG: videoChunkService.uploadVideoInChunks() 호출 직전");
             log.debug("DEBUG: videoChunkService는 null? {}", videoChunkService == null);
 
-            String fastApiJobId = videoChunkService.uploadVideoInChunks(videoFile, metadata);
+            String fastApiJobId = videoChunkService.uploadVideoInChunks(fileToUpload, metadata);
+
+            // ===== 4. 압축된 임시 파일 정리 =====
+            if (compressedFile != null) {
+                videoCompressionService.deleteCompressedFile(compressedFile);
+            }
 
             log.debug("DEBUG: videoChunkService.uploadVideoInChunks() 호출 완료 - 반환값: {}", fastApiJobId);
             log.info("✅ FastAPI 청크 업로드 성공 - job_id: {}", fastApiJobId);
