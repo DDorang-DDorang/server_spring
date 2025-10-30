@@ -5,15 +5,17 @@ import org.springframework.aop.interceptor.AsyncUncaughtExceptionHandler;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.AsyncConfigurer;
 import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadPoolExecutor;
 
 /**
- * 비동기 처리 설정
+ * 비동기 처리 및 스케줄링 설정
  *
  * @Async 어노테이션을 활성화하여 비동기 메서드 실행을 지원합니다.
+ * @Scheduled 어노테이션을 활성화하여 주기적 작업 실행을 지원합니다.
  * VideoAnalysisService의 비동기 영상 분석에 필요
  *
  * 스레드 풀 설정:
@@ -23,6 +25,7 @@ import java.util.concurrent.ThreadPoolExecutor;
  */
 @Configuration
 @EnableAsync
+@EnableScheduling
 @Slf4j
 public class AsyncConfig implements AsyncConfigurer {
 

@@ -9,6 +9,7 @@ import com.example.ddorang.presentation.service.VoiceAnalysisService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -216,6 +217,36 @@ public class VideoAnalysisService {
         });
     }
 
+    /**
+     * 스케줄러: 매 1시간마다 만료된 캐시 자동 정리
+     *
+     * fixedRate: 1시간 = 3,600,000ms
+     * 작업 시작 후 1시간마다 실행 (작업 실행 시간 무관)
+     */
+    @Scheduled(fixedRate = 3600000)
+    public void scheduledCacheCleanup() {
+        try {
+            int beforeSize = resultCache.size();
+
+            if (beforeSize == 0) {
+                return; // 캐시가 비어있으면 로그 안 남김
+            }
+
+            cleanupExpiredCache();
+            int afterSize = resultCache.size();
+            int removedCount = beforeSize - afterSize;
+
+            if (removedCount > 0) {
+                log.info("스케줄 캐시 정리 완료: {}개 제거 ({}개 → {}개 남음)",
+                    removedCount, beforeSize, afterSize);
+            } else {
+                log.debug("스케줄 캐시 정리: 만료된 항목 없음 ({}개 유지)", beforeSize);
+            }
+        } catch (Exception e) {
+            log.error("스케줄 캐시 정리 실패", e);
+        }
+    }
+
     // === Private 헬퍼 메서드들 ===
 
     // 상태별 메세지 생성
@@ -228,17 +259,5 @@ public class VideoAnalysisService {
                 "분석 중 오류가 발생했습니다: " + job.getErrorMessage() :
                 "분석 중 오류가 발생했습니다";
         };
-    }
-
-    // 캐시 통계 조회 (모니터링용)
-    public int getCacheSize() {
-        cleanupExpiredCache(); // 정리 후 사이즈 반환
-        return resultCache.size();
-    }
-
-    // 캐시 전체 정리 (필요시 사용)
-    public void clearAllCache() {
-        resultCache.clear();
-        log.info("전체 캐시 정리 완료");
     }
 }
