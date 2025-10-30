@@ -66,6 +66,7 @@ public class FastApiPollingService {
         return CompletableFuture.completedFuture(null);
     }
 
+
     // FastAPI /stt 엔드포인트 호출 (청크 업로드 방식)
     private String callFastApiStt(VideoAnalysisJob job) {
         log.debug("DEBUG: callFastApiStt() 메서드 진입");
@@ -75,6 +76,7 @@ public class FastApiPollingService {
 
             // 비디오 파일 경로 처리
             String videoPath = job.getVideoPath();
+
             log.debug("DEBUG: 원본 videoPath: {}", videoPath);
 
             // 웹 URL을 실제 파일 경로로 변환
