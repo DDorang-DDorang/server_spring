@@ -22,11 +22,11 @@ public class EmailService {
             MimeMessageHelper helper = new MimeMessageHelper(message, false, "UTF-8");
 
             helper.setTo(to);
-            helper.setSubject("[또랑또랑] 이메일 인증 코드");
+            helper.setSubject("[말콩] 이메일 인증 코드");
 
             String html = """
                 <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee;">
-                  <h2 style="color: #5A67D8;">또랑또랑 이메일 인증</h2>
+                  <h2 style="color: #5A67D8;">말콩 이메일 인증</h2>
                   <p>안녕하세요! 아래 인증 코드를 입력해 주세요:</p>
                   <div style="font-size: 24px; font-weight: bold; color: #2D3748; margin: 16px 0;">
                     %s
@@ -56,7 +56,7 @@ public class EmailService {
             MimeMessageHelper helper = new MimeMessageHelper(message, false, "UTF-8");
 
             helper.setTo(to);
-            helper.setSubject("[또랑또랑] AI 분석이 완료되었습니다");
+            helper.setSubject("[말콩] AI 분석이 완료되었습니다");
 
             String viewUrl = String.format("http://localhost:3000/analysis/%s", presentationId);
             
