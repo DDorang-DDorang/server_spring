@@ -13,8 +13,8 @@ public interface ApiPaths {
     String OAUTH = ROOT + "/oauth2";
 
     /* Refresh Token*/
-    String TOKEN_REFRESH = AUTH + "/token/refresh";
+    String TOKEN_REFRESH = "/token/refresh";
 
     /* Logout */
-    String TOKEN_LOGOUT = AUTH + "/token/logout";
+    String TOKEN_LOGOUT = "/token/logout";
 }

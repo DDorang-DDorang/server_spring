@@ -6,12 +6,18 @@ import com.example.ddorang.auth.security.JwtTokenProvider;
 import com.example.ddorang.common.ApiPaths;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizedClientRepository;
+import org.springframework.security.oauth2.client.web.reactive.function.client.ServletOAuth2AuthorizedClientExchangeFilterFunction;
+import org.springframework.web.reactive.function.client.WebClient;
 
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
@@ -20,12 +26,19 @@ import java.util.Arrays;
 
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity(prePostEnabled = true)
 public class SecurityConfig {
 
     private final JwtTokenProvider jwtTokenProvider;
+    private final ClientRegistrationRepository clientRegistrationRepository;
+    private final OAuth2AuthorizedClientRepository authorizedClientRepository;
 
-    public SecurityConfig(JwtTokenProvider jwtTokenProvider) {
+    public SecurityConfig(JwtTokenProvider jwtTokenProvider,
+                         ClientRegistrationRepository clientRegistrationRepository,
+                         OAuth2AuthorizedClientRepository authorizedClientRepository) {
         this.jwtTokenProvider = jwtTokenProvider;
+        this.clientRegistrationRepository = clientRegistrationRepository;
+        this.authorizedClientRepository = authorizedClientRepository;
     }
 
     @Bean
@@ -37,28 +50,62 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(ApiPaths.AUTH + "/**",
                                 ApiPaths.OAUTH + "/**",
-                                "/test/**").permitAll()
-
-                        .anyRequest().authenticated()
+                                "/test/**",
+                                "/api/files/**",
+                                "/api/oauth2/login/success",
+                                "/api/oauth2/refresh",
+                                "/ws/**"
+                                ).permitAll()
+                        .requestMatchers("/api/settings/**",
+                                "/api/teams/**", 
+                                "/api/topics/**",
+                                "/api/presentations/**",
+                                "/api/video-analysis/**",
+                                "/api/comments/**",
+                                "/api/notifications/**",
+                                "/api/auth/me",
+                                "/api/oauth2/validate"
+                                ).authenticated()
+                        .anyRequest().permitAll()
                 )
-                .addFilterBefore(new JwtAuthenticationFilter(jwtTokenProvider), UsernamePasswordAuthenticationFilter.class)
                 .oauth2Login(oauth2 -> oauth2
                         .authorizationEndpoint(authEndpoint ->
                                 authEndpoint.authorizationRequestResolver(customAuthorizationRequestResolver)
                         )
                         .defaultSuccessUrl("/api/oauth2/login/success", true)
+                        .failureUrl("/api/oauth2/login/failure")
+                        .clientRegistrationRepository(clientRegistrationRepository)
+                        .authorizedClientRepository(authorizedClientRepository)
+                )
+                .addFilterBefore(new JwtAuthenticationFilter(jwtTokenProvider), UsernamePasswordAuthenticationFilter.class)
+                .sessionManagement(session -> session
+                        .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED)
                 );
 
         return http.build();
     }
 
     @Bean
+    public WebClient webClient() {
+        ServletOAuth2AuthorizedClientExchangeFilterFunction oauth2 =
+                new ServletOAuth2AuthorizedClientExchangeFilterFunction(
+                        clientRegistrationRepository,
+                        authorizedClientRepository);
+        oauth2.setDefaultOAuth2AuthorizedClient(true);
+        return WebClient.builder()
+                .apply(oauth2.oauth2Configuration())
+                .build();
+    }
+
+    @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(Arrays.asList("http://localhost:3000"));
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         configuration.setAllowedHeaders(Arrays.asList("*"));
+        configuration.setExposedHeaders(Arrays.asList("Authorization"));
         configuration.setAllowCredentials(true);
+        configuration.setMaxAge(3600L);
         
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
