@@ -1,14 +1,15 @@
 package com.example.ddorang.presentation.service;
 
 import com.example.ddorang.presentation.entity.Presentation;
+import com.example.ddorang.presentation.entity.PresentationComparison;
 import com.example.ddorang.presentation.entity.Topic;
-import com.example.ddorang.presentation.repository.PresentationRepository;
-import com.example.ddorang.presentation.repository.TopicRepository;
-import com.example.ddorang.presentation.repository.VoiceAnalysisRepository;
-import com.example.ddorang.presentation.repository.SttResultRepository;
+import com.example.ddorang.presentation.repository.*;
+import com.example.ddorang.presentation.entity.VideoAnalysisJob;
 import com.example.ddorang.common.service.FileStorageService;
 import com.example.ddorang.presentation.service.FastApiService;
 import com.example.ddorang.presentation.service.VoiceAnalysisService;
+import com.example.ddorang.presentation.service.FastApiPollingService;
+import com.example.ddorang.presentation.service.VideoAnalysisService;
 import com.example.ddorang.team.entity.Team;
 import com.example.ddorang.team.entity.TeamMember;
 import com.example.ddorang.team.repository.TeamRepository;
@@ -37,9 +38,14 @@ public class PresentationService {
     private final TopicRepository topicRepository;
     private final VoiceAnalysisRepository voiceAnalysisRepository;
     private final SttResultRepository sttResultRepository;
+    private final PresentationFeedbackRepository presentationFeedbackRepository;
+    private final PresentationComparisonRepository presentationComparisonRepository;
+    private final VideoAnalysisJobRepository videoAnalysisJobRepository;
     private final FileStorageService fileStorageService;
     private final FastApiService fastApiService;
     private final VoiceAnalysisService voiceAnalysisService;
+    private final FastApiPollingService fastApiPollingService;
+    private final VideoAnalysisService videoAnalysisService;
     private final TeamRepository teamRepository;
     private final TeamMemberRepository teamMemberRepository;
     private final UserRepository userRepository;
@@ -66,6 +72,14 @@ public class PresentationService {
         // 토픽 존재 확인
         Topic topic = topicRepository.findById(topicId)
                 .orElseThrow(() -> new RuntimeException("토픽을 찾을 수 없습니다."));
+        
+            // 토픽당 발표 개수 제한 확인 (최대 2개)
+            long presentationCount = presentationRepository.countByTopicId(topicId);
+            if (presentationCount >= 2) {
+                log.warn("토픽 {}에 이미 {}개의 발표가 있습니다. 최대 2개까지만 생성 가능합니다.", topicId, presentationCount);
+                throw new RuntimeException("토픽당 최대 2개의 발표만 생성할 수 있습니다. 새로운 발표를 추가하려면 기존 발표를 삭제해주세요.");
+            }
+            log.info("토픽 {}의 현재 발표 개수: {} (최대 2개)", topicId, presentationCount);
         
             // 현재 인증 상태 확인
             try {
@@ -194,6 +208,31 @@ public class PresentationService {
         Presentation savedPresentation = presentationRepository.save(presentation);
         log.info("프레젠테이션 생성 완료: {}", savedPresentation.getId());
 
+        // 비디오 파일이 업로드되었으면 자동으로 분석 작업 시작
+        if (videoFile != null && !videoFile.isEmpty() && savedPresentation.getVideoUrl() != null) {
+            try {
+                log.info("비디오 파일이 업로드되었으므로 자동으로 분석 작업을 시작합니다 - 프레젠테이션: {}", savedPresentation.getId());
+                
+                // 비동기 분석 작업 생성
+                VideoAnalysisJob job = createVideoAnalysisJob(
+                    savedPresentation,
+                    videoFile.getOriginalFilename(),
+                    videoFile.getSize()
+                );
+                
+                // DB에 초기 상태 저장
+                videoAnalysisService.initializeJob(job);
+                
+                // FastAPI 폴링 시작 (백그라운드)
+                fastApiPollingService.startVideoAnalysis(job);
+                
+                log.info("자동 분석 작업이 시작되었습니다 - 작업 ID: {}", job.getId());
+            } catch (Exception e) {
+                log.error("자동 분석 작업 시작 실패: {}", e.getMessage(), e);
+                // 분석 작업 실패해도 프레젠테이션 생성은 성공으로 처리
+            }
+        }
+
             return savedPresentation;
             
                 } catch (Exception e) {
@@ -236,7 +275,23 @@ public class PresentationService {
             try {
                 // 기존 파일 삭제 (필요시)
                 if (presentation.getVideoUrl() != null) {
-                    // TODO: 기존 파일 삭제 로직 구현
+                    try {
+                        String oldVideoUrl = presentation.getVideoUrl();
+                        log.info("기존 비디오 파일 삭제 시도: {}", oldVideoUrl);
+                        
+                        String oldFilePath = extractFilePathFromUrl(oldVideoUrl);
+                        if (oldFilePath != null) {
+                            boolean deleted = fileStorageService.deleteFile(oldFilePath);
+                            if (deleted) {
+                                log.info("기존 비디오 파일 삭제 완료: {}", oldFilePath);
+                            } else {
+                                log.warn("기존 비디오 파일 삭제 실패 (파일이 존재하지 않을 수 있음): {}", oldFilePath);
+                            }
+                        }
+                    } catch (Exception e) {
+                        log.error("기존 비디오 파일 삭제 중 오류 발생: {}", e.getMessage(), e);
+                        // 기존 파일 삭제 실패해도 새 파일 업로드는 계속 진행
+                    }
                 }
                 
                 // 새 파일 저장
@@ -273,28 +328,86 @@ public class PresentationService {
         
         Presentation presentation = getPresentationById(presentationId);
         
-        // 관련된 VoiceAnalysis 데이터 삭제
+        // 1. 관련된 PresentationFeedback 데이터 삭제
+        presentationFeedbackRepository.findByPresentationId(presentationId)
+                .ifPresent(feedback -> {
+                    presentationFeedbackRepository.delete(feedback);
+                    log.info("PresentationFeedback 삭제 완료: {}", presentationId);
+                });
+        
+        // 2. 관련된 VoiceAnalysis 데이터 삭제
         voiceAnalysisRepository.findByPresentationId(presentationId)
                 .ifPresent(voiceAnalysis -> {
                     voiceAnalysisRepository.delete(voiceAnalysis);
                     log.info("VoiceAnalysis 삭제 완료: {}", presentationId);
                 });
         
-        // 관련된 SttResult 데이터 삭제
+        // 3. 관련된 SttResult 데이터 삭제
         sttResultRepository.findByPresentationId(presentationId)
                 .ifPresent(sttResult -> {
                     sttResultRepository.delete(sttResult);
                     log.info("SttResult 삭제 완료: {}", presentationId);
                 });
         
-        // 비디오 파일 삭제 (필요시)
-        if (presentation.getVideoUrl() != null) {
-            // TODO: 파일 삭제 로직 구현
+        // 4. 관련된 VideoAnalysisJob 데이터 삭제
+        List<VideoAnalysisJob> analysisJobs = videoAnalysisJobRepository.findByPresentationIdOrderByCreatedAtDesc(presentationId);
+        if (!analysisJobs.isEmpty()) {
+            videoAnalysisJobRepository.deleteAll(analysisJobs);
+            log.info("VideoAnalysisJob 삭제 완료: {} ({}개 삭제)", presentationId, analysisJobs.size());
         }
         
-        // 프레젠테이션 삭제
+        // 5. 관련된 PresentationComparison 데이터 삭제
+        try {
+            // 먼저 개별 삭제 시도
+            List<PresentationComparison> comparisons = presentationComparisonRepository.findComparisonsInvolving(
+                presentation.getTopic().getUser().getUserId(), presentationId);
+            if (!comparisons.isEmpty()) {
+                for (PresentationComparison comparison : comparisons) {
+                    presentationComparisonRepository.delete(comparison);
+                }
+                log.info("PresentationComparison 삭제 완료: {} ({}개 삭제)", presentationId, comparisons.size());
+            }
+        } catch (Exception e) {
+            log.warn("개별 삭제 실패, 배치 삭제 시도: {}", e.getMessage());
+            // 개별 삭제가 실패하면 배치 삭제 시도
+            try {
+                presentationComparisonRepository.deleteByPresentation1OrPresentation2(presentation);
+                log.info("PresentationComparison 배치 삭제 완료: {}", presentationId);
+            } catch (Exception batchException) {
+                log.error("PresentationComparison 삭제 실패: {}", batchException.getMessage());
+                throw new RuntimeException("발표 비교 데이터 삭제 중 오류가 발생했습니다: " + batchException.getMessage());
+            }
+        }
+        
+        // 6. 비디오 파일 삭제 (필요시)
+        if (presentation.getVideoUrl() != null) {
+            try {
+                // videoUrl에서 실제 파일 경로 추출
+                String videoUrl = presentation.getVideoUrl();
+                log.info("비디오 파일 삭제 시도: {}", videoUrl);
+                
+                // URL에서 파일 경로 추출 (/api/files/videos/... -> uploads/videos/...)
+                String filePath = extractFilePathFromUrl(videoUrl);
+                
+                if (filePath != null) {
+                    boolean deleted = fileStorageService.deleteFile(filePath);
+                    if (deleted) {
+                        log.info("비디오 파일 삭제 완료: {}", filePath);
+                    } else {
+                        log.warn("비디오 파일 삭제 실패 (파일이 존재하지 않을 수 있음): {}", filePath);
+                    }
+                } else {
+                    log.warn("비디오 파일 경로를 추출할 수 없습니다: {}", videoUrl);
+                }
+            } catch (Exception e) {
+                log.error("비디오 파일 삭제 중 오류 발생: {}", e.getMessage(), e);
+                // 파일 삭제 실패해도 프레젠테이션 삭제는 계속 진행
+            }
+        }
+        
+        // 7. 프레젠테이션 삭제
         presentationRepository.delete(presentation);
-        log.info("프레젠테이션 및 관련 댓글 삭제 완료: {}", presentationId);
+        log.info("프레젠테이션 및 관련 데이터 삭제 완료: {}", presentationId);
     }
 
     // 사용자의 모든 프레젠테이션 조회
@@ -482,5 +595,105 @@ public class PresentationService {
         
         // 기존 deletePresentation 로직 재사용
         deletePresentation(presentationId);
+    }
+
+    /**
+     * 프레젠테이션 존재 여부 확인
+     */
+    public boolean hasPresentation(UUID presentationId) {
+        return presentationRepository.existsById(presentationId);
+    }
+    /**
+     * URL에서 실제 파일 경로 추출
+     * /api/files/videos/userId/projectId/date/fileName -> uploads/videos/userId/projectId/date/fileName
+     */
+    private String extractFilePathFromUrl(String videoUrl) {
+        if (videoUrl == null || videoUrl.isEmpty()) {
+            return null;
+        }
+        
+        try {
+            // /api/files/videos/ 부분을 uploads/videos/로 변경
+            if (videoUrl.startsWith("/api/files/videos/")) {
+                return videoUrl.replace("/api/files/videos/", "uploads/videos/");
+            }
+            
+            // 이미 uploads/로 시작하는 경우 그대로 반환
+            if (videoUrl.startsWith("uploads/")) {
+                return videoUrl;
+            }
+            
+            log.warn("지원하지 않는 비디오 URL 형식: {}", videoUrl);
+            return null;
+            
+        } catch (Exception e) {
+            log.error("파일 경로 추출 실패: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    // 비동기 영상 분석 관련 메서드들
+    @Transactional
+    public VideoAnalysisJob createVideoAnalysisJob(Presentation presentation, String originalFilename, Long fileSize) {
+        log.info("비동기 영상 분석 작업 생성 - 프레젠테이션: {}", presentation.getId());
+
+        // 이미 진행 중인 작업이 있는지 확인
+        videoAnalysisJobRepository.findActiveJobByPresentationId(presentation.getId())
+            .ifPresent(existingJob -> {
+                log.warn("진행 중인 분석 작업 존재: {}", existingJob.getId());
+                throw new RuntimeException("이미 진행 중인 영상 분석 작업이 있습니다. 기존 작업: " + existingJob.getId());
+            });
+
+        // VideoAnalysisJob 생성
+        VideoAnalysisJob job = VideoAnalysisJob.builder()
+            .presentation(presentation)
+            .videoPath(presentation.getVideoUrl())
+            .originalFilename(originalFilename)
+            .fileSize(fileSize)
+            .build();
+
+        // DB에 저장
+        VideoAnalysisJob savedJob = videoAnalysisJobRepository.save(job);
+        log.info("영상 분석 작업 생성 완료 - ID: {}", savedJob.getId());
+
+        return savedJob;
+    }
+
+    // 사용자의 모든 영상 분석 작업 조회
+    public List<VideoAnalysisJob> getUserVideoAnalysisJobs(UUID userId) {
+        log.info("사용자 {}의 영상 분석 작업 목록 조회", userId);
+        return videoAnalysisJobRepository.findByUserIdOrderByCreatedAtDesc(userId);
+    }
+
+    // 특정 프레젠테이션의 분석 작업 조회
+    public List<VideoAnalysisJob> getPresentationAnalysisJobs(UUID presentationId) {
+        log.info("프레젠테이션 {}의 분석 작업 목록 조회", presentationId);
+        return videoAnalysisJobRepository.findByPresentationIdOrderByCreatedAtDesc(presentationId);
+    }
+
+    // 진행 중인 작업 수 조회
+    public long getActiveJobCount(UUID userId) {
+        long count = videoAnalysisJobRepository.countActiveJobsByUserId(userId);
+        log.debug("사용자 {}의 진행 중인 작업 수: {}", userId, count);
+        return count;
+    }
+
+    // 가장 최근 완료된 분석 결과 조회
+    public VideoAnalysisJob getLatestCompletedAnalysis(UUID presentationId) {
+        return videoAnalysisJobRepository.findLatestCompletedJobByPresentationId(presentationId)
+            .orElse(null);
+    }
+
+
+    /**
+     * 프레젠테이션의 목표시간 조회
+     */
+    public Integer getGoalTime(UUID presentationId) {
+        log.info("프레젠테이션 {}의 목표시간 조회", presentationId);
+
+        Presentation presentation = presentationRepository.findById(presentationId)
+                .orElseThrow(() -> new RuntimeException("프레젠테이션을 찾을 수 없습니다: " + presentationId));
+
+        return presentation.getGoalTime();
     }
 } 

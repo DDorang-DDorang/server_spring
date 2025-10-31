@@ -41,14 +41,18 @@ public class JwtTokenProvider {
     }
 
     public String createAccessToken(String userEmail, UUID userId) {
-        return createToken(userEmail, userId, accessTokenExpiration);
+        return createToken(userEmail, userId, null, accessTokenExpiration);
+    }
+
+    public String createAccessToken(String userEmail, UUID userId, String provider) {
+        return createToken(userEmail, userId, provider, accessTokenExpiration);
     }
 
     public String createRefreshToken(String userEmail, UUID userId) {
-        return createToken(userEmail, userId, refreshTokenExpiration);
+        return createToken(userEmail, userId, null, refreshTokenExpiration);
     }
 
-    private String createToken(String userEmail, UUID userId, long validityInMillis) {
+    private String createToken(String userEmail, UUID userId, String provider, long validityInMillis) {
         Date now = new Date();
         Date expiry = new Date(now.getTime() + validityInMillis);
 
@@ -62,6 +66,13 @@ public class JwtTokenProvider {
             builder.claim("userId", userId.toString());
         } else {
             throw new IllegalArgumentException("userId는 필수입니다.");
+        }
+        
+        // provider 추가 (GOOGLE 또는 LOCAL)
+        if (provider != null) {
+            builder.claim("provider", provider);
+        } else {
+            builder.claim("provider", "LOCAL"); // 기본값
         }
         
         return builder.signWith(key, SignatureAlgorithm.HS256).compact();

@@ -37,10 +37,12 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
     // 사용자의 알림 개수 조회
     long countByUserId(UUID userId);
 
-    // 사용자의 오래된 알림 삭제 (15개 초과시)
+    // 사용자의 오래된 알림 ID 조회 (15개 초과시)
+    @Query("SELECT n.notificationId FROM Notification n WHERE n.userId = :userId ORDER BY n.createdAt ASC")
+    List<UUID> findOldestNotificationIds(@Param("userId") UUID userId);
+    
+    // 특정 알림 ID들 삭제
     @Modifying
-    @Query("DELETE FROM Notification n WHERE n.userId = :userId AND n.notificationId IN " +
-           "(SELECT sub.notificationId FROM Notification sub WHERE sub.userId = :userId " +
-           "ORDER BY sub.createdAt ASC LIMIT :deleteCount)")
-    void deleteOldestNotifications(@Param("userId") UUID userId, @Param("deleteCount") int deleteCount);
+    @Query("DELETE FROM Notification n WHERE n.notificationId IN :ids")
+    void deleteNotificationsByIds(@Param("ids") List<UUID> ids);
 }

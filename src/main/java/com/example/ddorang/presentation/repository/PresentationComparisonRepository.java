@@ -1,7 +1,9 @@
 package com.example.ddorang.presentation.repository;
 
+import com.example.ddorang.presentation.entity.Presentation;
 import com.example.ddorang.presentation.entity.PresentationComparison;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -41,4 +43,12 @@ public interface PresentationComparisonRepository extends JpaRepository<Presenta
             @Param("userId") UUID userId, 
             @Param("presentationId") UUID presentationId
     );
+    
+    /**
+     * 특정 발표가 포함된 모든 비교 기록 삭제
+     */
+    @Modifying
+    @Query("DELETE FROM PresentationComparison pc WHERE " +
+           "pc.presentation1 = :presentation OR pc.presentation2 = :presentation")
+    void deleteByPresentation1OrPresentation2(@Param("presentation") Presentation presentation);
 }
