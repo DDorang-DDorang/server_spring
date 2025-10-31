@@ -1,12 +1,16 @@
 package com.example.ddorang.common.exception;
 
 import lombok.extern.slf4j.Slf4j;
+import org.apache.catalina.connector.ClientAbortException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.BindException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
+
+import java.net.SocketTimeoutException;
 
 @RestControllerAdvice
 @Slf4j
@@ -52,6 +56,15 @@ public class GlobalExceptionHandler {
         log.error("런타임 오류: {}", e.getMessage());
         return ResponseEntity.badRequest()
                 .body(ErrorResponse.of("RUNTIME_ERROR", e.getMessage()));
+    }
+
+    // 비디오 스트리밍 중 클라이언트 연결 끊김 등의 예외 무시
+    @ExceptionHandler({AsyncRequestNotUsableException.class, ClientAbortException.class, SocketTimeoutException.class})
+    public ResponseEntity<?> handleClientAbortException(Exception e) {
+        // 비디오 스트리밍 중 클라이언트가 연결을 끊거나 타임아웃이 발생한 경우
+        // 정상적인 상황이므로 에러 로그만 출력하고 응답하지 않음
+        log.debug("비디오 스트리밍 중 클라이언트 연결 끊김 (무시됨): {}", e.getClass().getSimpleName());
+        return null; // 응답하지 않음
     }
 
     @ExceptionHandler(Exception.class)

@@ -3,12 +3,10 @@ package com.example.ddorang.presentation.service;
 import com.example.ddorang.common.enums.JobStatus;
 import com.example.ddorang.common.service.NotificationService;
 import com.example.ddorang.presentation.entity.VideoAnalysisJob;
-import com.example.ddorang.presentation.event.AnalysisCompleteEvent;
 import com.example.ddorang.presentation.repository.VideoAnalysisJobRepository;
 import com.example.ddorang.presentation.service.VoiceAnalysisService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,7 +25,6 @@ public class VideoAnalysisService {
     private final VideoAnalysisJobRepository videoAnalysisJobRepository;
     private final NotificationService notificationService;
     private final VoiceAnalysisService voiceAnalysisService;
-    private final ApplicationEventPublisher eventPublisher;
 
     // 메모리에 결과 임시 저장 (TTL 캐시)
     private final Map<UUID, CacheEntry> resultCache = new ConcurrentHashMap<>();
@@ -87,8 +84,7 @@ public class VideoAnalysisService {
         }
     }
 
-    // 작업 완료 처리 - 이벤트 발행
-    @Transactional
+    // 작업 완료 처리 - 이벤트 발행 (트랜잭션 없이 처리)
     public void completeJob(UUID jobId, Map<String, Object> analysisResult) {
         try {
             log.info("작업 완료 처리 시작: {}", jobId);
@@ -105,31 +101,55 @@ public class VideoAnalysisService {
 
             job.setStatus(JobStatus.COMPLETED);
             videoAnalysisJobRepository.save(job);
-            // 분석 결과를 DB에 저장 (VoiceAnalysis, SttResult, PresentationFeedback)
-            try {
-                UUID presentationId = job.getPresentation().getId();
-                voiceAnalysisService.saveAnalysisResults(presentationId, analysisResult);
-                log.info("분석 결과 DB 저장 완료: {}", presentationId);
-            } catch (Exception dbError) {
-                log.error("분석 결과 DB 저장 실패: {}", jobId, dbError);
-                // DB 저장 실패해도 작업은 완료로 처리 (메모리 캐시는 있음)
-            }
-
-            // 알림에 필요한 정보 추출 (트랜잭션 내에서 Lazy Loading)
+            
+            // 트랜잭션 커밋 전에 정보 추출 (Lazy Loading)
             UUID userId = job.getPresentation().getTopic().getUser().getUserId();
             String presentationTitle = job.getPresentation().getTitle();
             UUID presentationId = job.getPresentation().getId();
+            
+            // 분석 결과를 DB에 저장 (VoiceAnalysis, SttResult, PresentationFeedback)
+            voiceAnalysisService.saveAnalysisResults(presentationId, analysisResult);
+            log.info("분석 결과 DB 저장 완료: {}", presentationId);
 
-            // 이벤트 발행 (트랜잭션 커밋 후 알림 발송됨)
-            eventPublisher.publishEvent(new AnalysisCompleteEvent(
-                jobId, userId, presentationTitle, presentationId, true
-            ));
+            // 알림 발송 (트랜잭션이 없으므로 이벤트 대신 직접 호출)
+            log.info("🔔 알림 발송 시작 - 사용자: {}, 발표: {}", userId, presentationTitle);
+            try {
+                notificationService.sendAnalysisCompleteNotification(
+                    userId, presentationTitle, presentationId
+                );
+                log.info("✅ 알림 발송 완료 - 사용자: {}", userId);
+            } catch (Exception notificationError) {
+                log.error("❌ 알림 발송 실패: {}", notificationError.getMessage(), notificationError);
+            }
 
             log.info("작업 완료 처리 성공: {}", jobId);
 
         } catch (Exception e) {
             log.error("작업 완료 처리 실패: {}", jobId, e);
-            markJobAsFailed(jobId, "결과 저장 중 오류: " + e.getMessage());
+            // 실패 처리도 트랜잭션 없이 처리
+            try {
+                markJobAsFailedWithoutTransaction(jobId, "결과 저장 중 오류: " + e.getMessage());
+            } catch (Exception e2) {
+                log.error("작업 실패 처리도 실패: {}", jobId, e2);
+            }
+        }
+    }
+    
+    // 트랜잭션 없이 작업 실패 처리
+    public void markJobAsFailedWithoutTransaction(UUID jobId, String errorMessage) {
+        try {
+            log.error("작업 실패 처리: {} - {}", jobId, errorMessage);
+
+            VideoAnalysisJob job = videoAnalysisJobRepository.findById(jobId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 작업: " + jobId));
+
+            job.markAsFailed(errorMessage);
+            videoAnalysisJobRepository.save(job);
+
+            log.info("작업 실패 처리 완료: {}", jobId);
+
+        } catch (Exception e) {
+            log.error("작업 실패 처리 실패: {}", jobId, e);
         }
     }
 
@@ -144,16 +164,6 @@ public class VideoAnalysisService {
 
             job.markAsFailed(errorMessage);
             videoAnalysisJobRepository.save(job);
-
-            // 알림에 필요한 정보 추출 (트랜잭션 내에서 Lazy Loading)
-            UUID userId = job.getPresentation().getTopic().getUser().getUserId();
-            String presentationTitle = job.getPresentation().getTitle();
-            UUID presentationId = job.getPresentation().getId();
-
-            // 실패 이벤트 발행 (트랜잭션 커밋 후 알림 발송됨)
-            eventPublisher.publishEvent(new AnalysisCompleteEvent(
-                jobId, userId, presentationTitle, presentationId, false
-            ));
 
         } catch (Exception e) {
             log.error("실패 처리 중 추가 오류: {}", jobId, e);

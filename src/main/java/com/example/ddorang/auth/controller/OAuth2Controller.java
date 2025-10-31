@@ -79,8 +79,8 @@ public class OAuth2Controller {
                 System.out.println("경고: 리프레시 토큰이 없습니다!");
             }
 
-            // JWT 토큰 생성 (userId 포함)
-            String jwtToken = jwtTokenProvider.createAccessToken(savedUser.getEmail(), savedUser.getUserId());
+            // JWT 토큰 생성 (userId 포함, provider: GOOGLE)
+            String jwtToken = jwtTokenProvider.createAccessToken(savedUser.getEmail(), savedUser.getUserId(), "GOOGLE");
 
             // 사용자 정보도 함께 전달 (JWT 토큰 사용)
             String redirectUrl = "http://localhost:3000/oauth2/callback/google" +
