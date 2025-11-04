@@ -4,8 +4,6 @@ import com.example.ddorang.presentation.entity.Topic;
 import com.example.ddorang.presentation.entity.Presentation;
 import com.example.ddorang.presentation.repository.TopicRepository;
 import com.example.ddorang.presentation.repository.PresentationRepository;
-import com.example.ddorang.presentation.repository.VoiceAnalysisRepository;
-import com.example.ddorang.presentation.repository.SttResultRepository;
 import com.example.ddorang.auth.entity.User;
 import com.example.ddorang.team.entity.Team;
 import lombok.RequiredArgsConstructor;
@@ -21,11 +19,10 @@ import java.util.UUID;
 @Slf4j
 @Transactional(readOnly = true)
 public class TopicService {
-    
+
     private final TopicRepository topicRepository;
     private final PresentationRepository presentationRepository;
-    private final VoiceAnalysisRepository voiceAnalysisRepository;
-    private final SttResultRepository sttResultRepository;
+    private final PresentationService presentationService;
     
     // 사용자의 모든 토픽(프로젝트) 조회
     public List<Topic> getTopicsByUserId(UUID userId) {
@@ -81,41 +78,26 @@ public class TopicService {
     @Transactional
     public void deleteTopic(UUID topicId) {
         log.info("토픽 {} 삭제", topicId);
-        
+
         Topic topic = getTopicById(topicId);
-        
-        // 토픽에 속한 프레젠테이션들 먼저 삭제
+
+        // 토픽에 속한 프레젠테이션들 먼저 삭제 (PresentationService 재사용)
         List<Presentation> presentations = presentationRepository.findByTopicId(topicId);
+        log.info("토픽 {}에 속한 프레젠테이션 {}개 삭제 시작", topicId, presentations.size());
+
         for (Presentation presentation : presentations) {
-            UUID presentationId = presentation.getId();
-            
-            // 관련된 VoiceAnalysis 데이터 삭제
-            voiceAnalysisRepository.findByPresentationId(presentationId)
-                    .ifPresent(voiceAnalysis -> {
-                        voiceAnalysisRepository.delete(voiceAnalysis);
-                        log.info("VoiceAnalysis 삭제 완료: {}", presentationId);
-                    });
-            
-            // 관련된 SttResult 데이터 삭제
-            sttResultRepository.findByPresentationId(presentationId)
-                    .ifPresent(sttResult -> {
-                        sttResultRepository.delete(sttResult);
-                        log.info("SttResult 삭제 완료: {}", presentationId);
-                    });
-            
-            // 비디오 파일 삭제 (필요시)
-            if (presentation.getVideoUrl() != null) {
-                // TODO: 파일 삭제 로직 구현
-                log.info("프레젠테이션 {} 비디오 파일 삭제 예정: {}", presentationId, presentation.getVideoUrl());
+            try {
+                // PresentationService의 deletePresentation을 재사용하여 완전한 삭제 보장
+                presentationService.deletePresentation(presentation.getId());
+            } catch (Exception e) {
+                log.error("프레젠테이션 {} 삭제 실패: {}", presentation.getId(), e.getMessage(), e);
+                throw new RuntimeException("프레젠테이션 삭제 중 오류가 발생했습니다: " + e.getMessage(), e);
             }
-            
-            presentationRepository.delete(presentation);
-            log.info("프레젠테이션 {} 삭제 완료", presentationId);
         }
-        
-        // 토픽 삭제
+
+        // 모든 프레젠테이션이 삭제된 후 토픽 삭제
         topicRepository.delete(topic);
-        
+
         log.info("토픽 삭제 완료: {} (삭제된 프레젠테이션: {}개)", topicId, presentations.size());
     }
     
