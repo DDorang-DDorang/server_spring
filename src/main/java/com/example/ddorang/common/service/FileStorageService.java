@@ -26,7 +26,7 @@ public class FileStorageService {
     
     @Value("${app.upload.thumbnail.dir:uploads/thumbnails}")
     private String thumbnailUploadDir;
-    
+
     // 비디오 파일 저장
     public FileInfo storeVideoFile(MultipartFile file, String userId, Long projectId) {
         try {
@@ -116,12 +116,12 @@ public class FileStorageService {
     private Path createUploadDirectory(String baseDir, String userId, Long projectId) throws IOException {
         String dateDir = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy/MM/dd"));
         Path uploadPath = Paths.get(baseDir, userId, projectId.toString(), dateDir);
-        
+
         if (!Files.exists(uploadPath)) {
             Files.createDirectories(uploadPath);
             log.debug("디렉토리 생성: {}", uploadPath.toString());
         }
-        
+
         return uploadPath;
     }
     
