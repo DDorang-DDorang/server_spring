@@ -25,6 +25,7 @@ public class CommentResponse {
     private UUID presentationId;
     private UUID userId;
     private String userName;
+    private String userProfileImage;
     private UUID parentCommentId;
     private List<CommentResponse> replies;
     private long replyCount;
@@ -40,6 +41,7 @@ public class CommentResponse {
                 .presentationId(comment.getPresentation().getId())
                 .userId(comment.getUser().getUserId())
                 .userName(comment.getUser().getName())
+                .userProfileImage(comment.getUser().getProfileImage())
                 .parentCommentId(comment.getParentComment() != null ? comment.getParentComment().getId() : null)
                 .replies(comment.getReplies().stream()
                         .map(CommentResponse::from)
@@ -59,6 +61,7 @@ public class CommentResponse {
                 .presentationId(comment.getPresentation().getId())
                 .userId(comment.getUser().getUserId())
                 .userName(comment.getUser().getName())
+                .userProfileImage(comment.getUser().getProfileImage())
                 .parentCommentId(comment.getParentComment() != null ? comment.getParentComment().getId() : null)
                 .replyCount(comment.getReplies().size())
                 .build();

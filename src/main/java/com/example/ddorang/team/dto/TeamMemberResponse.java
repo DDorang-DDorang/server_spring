@@ -15,15 +15,17 @@ public class TeamMemberResponse {
     private UUID userId;
     private String userName;
     private String userEmail;
+    private String userProfileImage;
     private String role;
     private LocalDateTime joinedAt;
-    
+
     public static TeamMemberResponse from(TeamMember teamMember) {
         return TeamMemberResponse.builder()
                 .id(teamMember.getId())
                 .userId(teamMember.getUser().getUserId())
                 .userName(teamMember.getUser().getName())
                 .userEmail(teamMember.getUser().getEmail())
+                .userProfileImage(teamMember.getUser().getProfileImage())
                 .role(teamMember.getRole().name())
                 .joinedAt(teamMember.getJoinedAt())
                 .build();
