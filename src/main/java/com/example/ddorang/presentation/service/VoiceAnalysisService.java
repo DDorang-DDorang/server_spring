@@ -54,12 +54,10 @@ public class VoiceAnalysisService {
             // result 객체가 있는 경우 (새로운 구조)
             if (fastApiResponse.containsKey("result")) {
                 analysisResult = (Map<String, Object>) fastApiResponse.get("result");
-                log.info("새로운 FastAPI 응답 구조 사용 (result 객체 포함)");
             } 
             // result 객체가 없는 경우 (기존 구조 - 직접 분석 결과)
             else {
                 analysisResult = fastApiResponse;
-                log.info("기존 FastAPI 응답 구조 사용 (직접 분석 결과)");
             }
             
             if (analysisResult == null || analysisResult.isEmpty()) {
@@ -67,7 +65,21 @@ public class VoiceAnalysisService {
                 throw new RuntimeException("분석 결과 데이터가 올바르지 않습니다.");
             }
 
-            log.info("분석 결과 데이터 추출 성공: {}", analysisResult.keySet());
+            // anxiety_analysis 확인 (문자열이면 등급, Map이면 내부에서 grade 추출)
+            Object anxietyAnalysisObj = analysisResult.get("anxiety_analysis");
+            if (anxietyAnalysisObj != null && !analysisResult.containsKey("anxiety_grade")) {
+                if (anxietyAnalysisObj instanceof Map) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> anxietyAnalysis = (Map<String, Object>) anxietyAnalysisObj;
+                    if (anxietyAnalysis.containsKey("grade")) {
+                        analysisResult.put("anxiety_grade", anxietyAnalysis.get("grade"));
+                    }
+                } else if (anxietyAnalysisObj instanceof String) {
+                    analysisResult.put("anxiety_grade", anxietyAnalysisObj);
+                } else {
+                    analysisResult.put("anxiety_grade", anxietyAnalysisObj.toString());
+                }
+            }
 
             // 실제 DB에 분석 결과 저장
             saveVoiceAnalysis(presentation, analysisResult);
@@ -83,19 +95,9 @@ public class VoiceAnalysisService {
 
     private void saveVoiceAnalysis(Presentation presentation, Map<String, Object> response) {
         try {
-            log.info("VoiceAnalysis 저장 시작 - 프레젠테이션: {}", presentation.getId());
-            
         // 기존 분석 결과가 있으면 삭제
         voiceAnalysisRepository.findByPresentationId(presentation.getId())
                 .ifPresent(voiceAnalysisRepository::delete);
-
-            log.info("기존 VoiceAnalysis 삭제 완료");
-
-            // 표정 등급과 텍스트 계산
-            String expressionGrade = calculateExpressionGrade(response);
-            String expressionText = generateExpressionText(response);
-            
-            log.info("표정 분석 결과 - 등급: {}, 텍스트: {}", expressionGrade, expressionText);
 
         VoiceAnalysis voiceAnalysis = VoiceAnalysis.builder()
                 .presentation(presentation)
@@ -111,17 +113,14 @@ public class VoiceAnalysisService {
                 .wpmGrade(getStringValue(response, "wpm_grade"))
                 .wpmAvg(getFloatValue(response, "wpm_avg"))
                 .wpmComment(getStringValue(response, "wpm_comment"))
-                // 표정 분석 (감정 분석 기반)
-                .expressionGrade(expressionGrade)
-                .expressionText(expressionText)
-                    // 감정 분석 추가
-                    .emotionAnalysis(convertToJsonString(response.get("emotion_analysis")))
+                // 불안 분석 (FastAPI에서 받은 값 그대로 사용)
+                .anxietyGrade(getStringValue(response, "anxiety_grade"))
+                .anxietyRatio(getFloatValue(response, "anxiety_ratio"))
                 .build();
 
-            log.info("VoiceAnalysis 객체 생성 완료");
-
         voiceAnalysisRepository.save(voiceAnalysis);
-        log.info("VoiceAnalysis 저장 완료: {}", presentation.getId());
+        log.info("VoiceAnalysis 저장 완료 - anxiety_grade: {}, anxiety_ratio: {}", 
+                voiceAnalysis.getAnxietyGrade(), voiceAnalysis.getAnxietyRatio());
         } catch (Exception e) {
             log.error("VoiceAnalysis 저장 실패: {}", presentation.getId(), e);
             throw e;
@@ -205,85 +204,6 @@ public class VoiceAnalysisService {
             throw e;
         }
     }
-
-    /**
-     * 감정 분석 기반 표정 등급 계산
-     */
-    private String calculateExpressionGrade(Map<String, Object> response) {
-        try {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> emotionAnalysis = (Map<String, Object>) response.get("emotion_analysis");
-
-            if (emotionAnalysis == null) {
-                return "C"; // 기본값
-            }
-
-            double positive = getDoubleValue(emotionAnalysis, "positive");
-            double neutral = getDoubleValue(emotionAnalysis, "neutral");
-            double negative = getDoubleValue(emotionAnalysis, "negative");
-
-            log.info("감정 분석 결과 - 긍정: {}%, 중립: {}%, 부정: {}%", positive, neutral, negative);
-
-            // ✅ 긍정 - 부정 차이 계산
-            double balance = positive - negative; // +면 긍정적, -면 부정적
-
-            // ✅ 표정 등급 계산
-            if (balance >= 10) {
-                return "A"; // 매우 긍정적
-            } else if (balance >= 5) {
-                return "B"; // 긍정적
-            } else if (balance > -5) {
-                return "C"; // 무표정
-            } else if (balance > -10) {
-                return "D"; // 부정적
-            } else {
-                return "E"; // 매우 부정적
-            }
-
-        } catch (Exception e) {
-            log.error("표정 등급 계산 실패: {}", e.getMessage());
-            return "C";
-        }
-    }
-    
-    /**
-     * 감정 분석 기반 표정 텍스트 생성
-     */
-    private String generateExpressionText(Map<String, Object> response) {
-        try {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> emotionAnalysis = (Map<String, Object>) response.get("emotion_analysis");
-
-            if (emotionAnalysis == null) {
-                return "표정 분석 데이터를 사용할 수 없습니다.";
-            }
-
-            double positive = getDoubleValue(emotionAnalysis, "positive");
-            double neutral = getDoubleValue(emotionAnalysis, "neutral");
-            double negative = getDoubleValue(emotionAnalysis, "negative");
-
-            // ✅ 긍정 - 부정 밸런스 계산
-            double balance = positive - negative; // +면 긍정적, -면 부정적
-
-            // ✅ 텍스트 생성
-            if (balance >= 10) {
-                return "매우 밝고 긍정적인 표정을 유지했습니다. 발표에 자신감이 잘 드러납니다.";
-            } else if (balance >= 5) {
-                return "긍정적이고 자연스러운 표정을 보였습니다. 청중에게 좋은 인상을 주었습니다.";
-            } else if (balance >= -5) {
-                return "표정 변화가 적습니다. 조금 더 미소를 지어보면 좋습니다.";
-            } else if (balance >= -10) {
-                return "다소 부정적인 표정이 보였습니다. 긴장을 풀고 편안한 표정을 연습해보세요.";
-            } else {
-                return "부정적인 표정이 많이 나타났습니다. 발표 전 마음의 준비가 필요합니다.";
-            }
-
-        } catch (Exception e) {
-            log.error("표정 텍스트 생성 실패: {}", e.getMessage());
-            return "표정 분석 결과를 처리할 수 없습니다.";
-        }
-    }
-
 
     /**
      * 프레젠테이션의 음성 분석 결과 조회

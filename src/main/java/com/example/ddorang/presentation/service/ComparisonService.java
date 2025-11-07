@@ -129,9 +129,8 @@ public class ComparisonService {
                 .intensityGrade(analysis1.getIntensityGrade())
                 .pitchGrade(analysis1.getPitchGrade())
                 .wpmGrade(analysis1.getWpmGrade())
-                .expressionGrade(analysis1.getExpressionGrade())
-                .expressionText(analysis1.getExpressionText())
-                .emotionAnalysis(analysis1.getEmotionAnalysis())
+                .anxietyGrade(analysis1.getAnxietyGrade())
+                .anxietyRatio(analysis1.getAnxietyRatio())
                 .pronunciationScore(pronunciationScore1)
                 .build();
                 
@@ -147,9 +146,8 @@ public class ComparisonService {
                 .intensityGrade(analysis2.getIntensityGrade())
                 .pitchGrade(analysis2.getPitchGrade())
                 .wpmGrade(analysis2.getWpmGrade())
-                .expressionGrade(analysis2.getExpressionGrade())
-                .expressionText(analysis2.getExpressionText())
-                .emotionAnalysis(analysis2.getEmotionAnalysis())
+                .anxietyGrade(analysis2.getAnxietyGrade())
+                .anxietyRatio(analysis2.getAnxietyRatio())
                 .pronunciationScore(pronunciationScore2)
                 .build();
         

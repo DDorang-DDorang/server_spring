@@ -29,9 +29,8 @@ public class ComparisonDataDto {
         private String intensityGrade;   // 음성 강도 등급
         private String pitchGrade;       // 피치 등급
         private String wpmGrade;         // 말하기 속도 등급
-        private String expressionGrade;  // 표정 등급
-        private String expressionText;   // 표정 분석 텍스트
-        private String emotionAnalysis;  // 감정 분석 결과 (JSON)
+        private String anxietyGrade;     // 불안 등급
+        private Float anxietyRatio;      // 불안 비율
         private Float pronunciationScore; // 발음 정확성
     }
 }
