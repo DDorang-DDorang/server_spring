@@ -38,10 +38,6 @@ public class VoiceAnalysisResponse {
     private Float anxietyRatio;
     private String anxietyComment;
 
-    // 표정 분석
-    private String expressionGrade;
-    private String expressionText;
-    private String emotionAnalysis;
     
     // Entity에서 DTO로 변환하는 정적 메서드
     public static VoiceAnalysisResponse from(VoiceAnalysis voiceAnalysis) {
@@ -61,9 +57,6 @@ public class VoiceAnalysisResponse {
                 .anxietyGrade(voiceAnalysis.getAnxietyGrade())
                 .anxietyRatio(voiceAnalysis.getAnxietyRatio())
                 .anxietyComment(voiceAnalysis.getAnxietyComment())
-                .expressionGrade(voiceAnalysis.getExpressionGrade())
-                .expressionText(voiceAnalysis.getExpressionText())
-                .emotionAnalysis(voiceAnalysis.getEmotionAnalysis())
                 .build();
     }
 } 

@@ -54,12 +54,10 @@ public class VoiceAnalysisService {
             // result 객체가 있는 경우 (새로운 구조)
             if (fastApiResponse.containsKey("result")) {
                 analysisResult = (Map<String, Object>) fastApiResponse.get("result");
-                log.info("새로운 FastAPI 응답 구조 사용 (result 객체 포함)");
             } 
             // result 객체가 없는 경우 (기존 구조 - 직접 분석 결과)
             else {
                 analysisResult = fastApiResponse;
-                log.info("기존 FastAPI 응답 구조 사용 (직접 분석 결과)");
             }
             
             if (analysisResult == null || analysisResult.isEmpty()) {
@@ -67,7 +65,21 @@ public class VoiceAnalysisService {
                 throw new RuntimeException("분석 결과 데이터가 올바르지 않습니다.");
             }
 
-            log.info("분석 결과 데이터 추출 성공: {}", analysisResult.keySet());
+            // anxiety_analysis 확인 (문자열이면 등급, Map이면 내부에서 grade 추출)
+            Object anxietyAnalysisObj = analysisResult.get("anxiety_analysis");
+            if (anxietyAnalysisObj != null && !analysisResult.containsKey("anxiety_grade")) {
+                if (anxietyAnalysisObj instanceof Map) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> anxietyAnalysis = (Map<String, Object>) anxietyAnalysisObj;
+                    if (anxietyAnalysis.containsKey("grade")) {
+                        analysisResult.put("anxiety_grade", anxietyAnalysis.get("grade"));
+                    }
+                } else if (anxietyAnalysisObj instanceof String) {
+                    analysisResult.put("anxiety_grade", anxietyAnalysisObj);
+                } else {
+                    analysisResult.put("anxiety_grade", anxietyAnalysisObj.toString());
+                }
+            }
 
             // 실제 DB에 분석 결과 저장
             saveVoiceAnalysis(presentation, analysisResult);
@@ -83,13 +95,9 @@ public class VoiceAnalysisService {
 
     private void saveVoiceAnalysis(Presentation presentation, Map<String, Object> response) {
         try {
-            log.info("VoiceAnalysis 저장 시작 - 프레젠테이션: {}", presentation.getId());
-            
         // 기존 분석 결과가 있으면 삭제
         voiceAnalysisRepository.findByPresentationId(presentation.getId())
                 .ifPresent(voiceAnalysisRepository::delete);
-
-            log.info("기존 VoiceAnalysis 삭제 완료");
 
         VoiceAnalysis voiceAnalysis = VoiceAnalysis.builder()
                 .presentation(presentation)
@@ -111,10 +119,9 @@ public class VoiceAnalysisService {
                 .anxietyComment(getStringValue(response, "anxiety_comment"))
                 .build();
 
-            log.info("VoiceAnalysis 객체 생성 완료");
-
         voiceAnalysisRepository.save(voiceAnalysis);
-        log.info("VoiceAnalysis 저장 완료: {}", presentation.getId());
+        log.info("VoiceAnalysis 저장 완료 - anxiety_grade: {}, anxiety_ratio: {}", 
+                voiceAnalysis.getAnxietyGrade(), voiceAnalysis.getAnxietyRatio());
         } catch (Exception e) {
             log.error("VoiceAnalysis 저장 실패: {}", presentation.getId(), e);
             throw e;

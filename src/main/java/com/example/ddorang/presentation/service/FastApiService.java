@@ -75,26 +75,7 @@ public class FastApiService {
             // 3. 응답 파싱
             Map<String, Object> response = objectMapper.readValue(responseBody, new TypeReference<Map<String, Object>>() {});
             
-            // 4. FastAPI 응답에 표정 분석 데이터 추가 (5개 축 구조로 통합)
-            if (response.containsKey("result")) {
-                Map<String, Object> result = (Map<String, Object>) response.get("result");
-                
-                // emotion_analysis가 있으면 표정 분석 데이터로 변환
-                if (result.containsKey("emotion_analysis")) {
-                    Map<String, Object> emotionAnalysis = (Map<String, Object>) result.get("emotion_analysis");
-                    if (emotionAnalysis != null) {
-                        // 표정 분석 데이터 추가
-                        result.put("expression_analysis", emotionAnalysis);
-                        result.put("expression_grade", extractExpressionGrade(emotionAnalysis));
-                        result.put("expression_text", extractExpressionText(emotionAnalysis));
-                    }
-                } else {
-                    // emotion_analysis가 없으면 기본값 설정
-                    result.put("expression_analysis", createMockExpressionAnalysis());
-                    result.put("expression_grade", "C");
-                    result.put("expression_text", "표정 분석 결과가 없습니다.");
-                }
-            }
+            // 4. FastAPI 응답 처리 완료
             
             return response;
 
@@ -186,32 +167,14 @@ public class FastApiService {
         mockResult.put("anxiety_comment", "불안 징후 비율이 8.0%로 약간의 긴장감이 느껴집니다. (목 데이터)");
         mockResult.put("duration_seconds", 120); // Mock 데이터로 2분(120초) 설정
         
-        // 표정 분석 목 데이터 추가
-        mockResult.put("expression_analysis", createMockExpressionAnalysis());
-        mockResult.put("expression_grade", "B");
-        mockResult.put("expression_text", "표정이 자연스럽고 적절합니다. (목 데이터 - FastAPI 서버 연결 필요)");
+        // 불안 분석 목 데이터 추가
+        mockResult.put("anxiety_grade", "B");
+        mockResult.put("anxiety_ratio", 0.5f);
         
         log.info("목 분석 결과 생성 완료: {}", filename);
         return mockResult;
     }
     
-    /**
-     * 표정 분석 목 데이터 생성
-     */
-    private Map<String, Object> createMockExpressionAnalysis() {
-        Map<String, Object> expressionAnalysis = new HashMap<>();
-        expressionAnalysis.put("dominant_emotion", "neutral");
-        expressionAnalysis.put("dominant_emotion_grade", "B");
-        expressionAnalysis.put("emotion_distribution", Map.of(
-            "neutral", 0.4,
-            "happy", 0.3,
-            "confident", 0.2,
-            "concerned", 0.1
-        ));
-        expressionAnalysis.put("summary", "전반적으로 안정적이고 자신감 있는 표정을 유지했습니다.");
-        return expressionAnalysis;
-    }
-
     /**
      * FastAPI에 최적화된 대본 비교 요청 전송
      */
@@ -299,66 +262,5 @@ public class FastApiService {
             log.error("metadata JSON 생성 실패", e);
             return "{}"; // 실패 시 빈 JSON 객체 반환
         }
-    }
-    
-    /**
-     * 표정 분석 데이터에서 등급 추출
-     */
-    private String extractExpressionGrade(Map<String, Object> emotionAnalysis) {
-        if (emotionAnalysis == null) return "C";
-        
-        // dominant_emotion_grade가 있으면 사용
-        Object grade = emotionAnalysis.get("dominant_emotion_grade");
-        if (grade != null) {
-            return grade.toString();
-        }
-        
-        // dominant_emotion이 있으면 기본 등급 계산
-        Object emotion = emotionAnalysis.get("dominant_emotion");
-        if (emotion != null) {
-            String emotionStr = emotion.toString().toLowerCase();
-            // 감정에 따른 기본 등급 설정
-            if (emotionStr.contains("happy") || emotionStr.contains("confident") || emotionStr.contains("neutral")) {
-                return "B";
-            } else if (emotionStr.contains("sad") || emotionStr.contains("angry") || emotionStr.contains("fear")) {
-                return "D";
-            }
-        }
-        
-        return "C"; // 기본값
-    }
-    
-    /**
-     * 표정 분석 데이터에서 텍스트 추출
-     */
-    private String extractExpressionText(Map<String, Object> emotionAnalysis) {
-        if (emotionAnalysis == null) return "표정 분석 결과가 없습니다.";
-        
-        // summary가 있으면 사용
-        Object summary = emotionAnalysis.get("summary");
-        if (summary != null) {
-            return summary.toString();
-        }
-        
-        // dominant_emotion이 있으면 기본 텍스트 생성
-        Object emotion = emotionAnalysis.get("dominant_emotion");
-        if (emotion != null) {
-            String emotionStr = emotion.toString().toLowerCase();
-            if (emotionStr.contains("happy")) {
-                return "긍정적이고 밝은 표정을 유지했습니다.";
-            } else if (emotionStr.contains("confident")) {
-                return "자신감 있는 표정으로 발표했습니다.";
-            } else if (emotionStr.contains("neutral")) {
-                return "안정적이고 자연스러운 표정을 유지했습니다.";
-            } else if (emotionStr.contains("sad")) {
-                return "표정이 다소 우울해 보입니다.";
-            } else if (emotionStr.contains("angry")) {
-                return "표정이 다소 화가 나 보입니다.";
-            } else if (emotionStr.contains("fear")) {
-                return "표정이 다소 불안해 보입니다.";
-            }
-        }
-        
-        return "표정 분석이 완료되었습니다.";
     }
 }

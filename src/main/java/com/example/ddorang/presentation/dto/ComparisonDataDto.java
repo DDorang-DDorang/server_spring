@@ -32,9 +32,6 @@ public class ComparisonDataDto {
         private String anxietyGrade;     // 불안 등급
         private Float anxietyRatio;      // 불안 비율
         private String anxietyComment;   // 불안 해설
-        private String expressionGrade;  // 표정 등급
-        private String expressionText;   // 표정 분석 텍스트
-        private String emotionAnalysis;  // 감정 분석 결과 (JSON)
         private Float pronunciationScore; // 발음 정확성
         private String pronunciationGrade; // 발음 등급
         private String pronunciationComment; // 발음 코멘트

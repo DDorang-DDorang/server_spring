@@ -61,15 +61,4 @@ public class VoiceAnalysis {
 
     @Column(name = "anxiety_comment", columnDefinition = "TEXT")
     private String anxietyComment;
-
-    // 표정 분석
-    @Column(name = "expression_grade", length = 10)
-    private String expressionGrade;
-
-    @Column(name = "expression_text", columnDefinition = "TEXT")
-    private String expressionText;
-
-    // 감정 분석
-    @Column(name = "emotion_analysis", columnDefinition = "TEXT")
-    private String emotionAnalysis;
 } 
