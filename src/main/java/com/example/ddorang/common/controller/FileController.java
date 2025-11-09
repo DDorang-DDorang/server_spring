@@ -1,17 +1,19 @@
 package com.example.ddorang.common.controller;
 
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.core.io.support.ResourceRegion;
+import org.springframework.http.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
-import jakarta.servlet.http.HttpServletRequest;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/files")
@@ -21,16 +23,17 @@ public class FileController {
     @Value("${app.upload.dir:uploads}")
     private String uploadDir;
 
+    @Value("${app.upload.use-external-storage:false}")
+    private boolean useExternalStorage;
+
+    @Value("${app.upload.external-storage-url:https://malkongserver.shop/api/files}")
+    private String externalStorageUrl;
+
     // 메인 비디오 파일 제공 엔드포인트
     @GetMapping("/videos/**")
-    public ResponseEntity<Resource> getVideoFile(HttpServletRequest request) {
+    public ResponseEntity<?> getVideoFile(HttpServletRequest request) {
         try {
             // URL에서 /api/files/videos/ 이후 경로 추출
-            String requestURL = request.getRequestURL().toString();
-            String contextPath = request.getContextPath();
-            String servletPath = request.getServletPath();
-            String pathInfo = request.getPathInfo();
-            
             // /api/files/videos/ 이후의 전체 경로 추출
             String fullPath = request.getRequestURI();
             String videoPath = fullPath.substring(fullPath.indexOf("/api/files/videos/") + "/api/files/videos/".length());
@@ -42,42 +45,73 @@ public class FileController {
             
             log.info("비디오 파일 요청 경로: {}", videoPath);
             
-            // 파일 경로 구성 (uploadDir + videos + videoPath)
-            Path filePath = Paths.get(uploadDir).resolve("videos").resolve(videoPath).normalize();
+            // 외부 파일 서버 사용 시 리디렉션
+            if (useExternalStorage) {
+                String redirectUrl = externalStorageUrl + "/videos/" + videoPath;
+                log.info("외부 파일 서버로 리디렉션: {}", redirectUrl);
+                return ResponseEntity.status(org.springframework.http.HttpStatus.TEMPORARY_REDIRECT)
+                        .header(HttpHeaders.LOCATION, redirectUrl)
+                        .build();
+            }
+            
+            // 파일 경로 구성
+            // videoPath가 stored_videos/로 시작하는 경우: uploadDir + videoPath 직접 사용
+            // 그 외의 경우: uploadDir + videos + videoPath
+            Path filePath;
+            if (videoPath.startsWith("stored_videos/")) {
+                // stored_videos/ 경로인 경우 uploadDir 하위에 직접 위치
+                filePath = Paths.get(uploadDir).resolve(videoPath).normalize();
+            } else {
+                // 기존 방식: uploadDir/videos/videoPath
+                filePath = Paths.get(uploadDir).resolve("videos").resolve(videoPath).normalize();
+            }
             
             log.info("비디오 파일 절대 경로: {}", filePath);
             
             Resource resource = new UrlResource(filePath.toUri());
-            
+
             if (!resource.exists() || !resource.isReadable()) {
                 log.warn("파일을 찾을 수 없거나 읽을 수 없습니다: {}", filePath);
+                // 외부 파일 서버로 폴백
+                if (!useExternalStorage) {
+                    String redirectUrl = externalStorageUrl + "/videos/" + videoPath;
+                    log.info("로컬 파일 없음, 외부 파일 서버로 리디렉션: {}", redirectUrl);
+                    return ResponseEntity.status(org.springframework.http.HttpStatus.TEMPORARY_REDIRECT)
+                            .header(HttpHeaders.LOCATION, redirectUrl)
+                            .build();
+                }
                 return ResponseEntity.notFound().build();
             }
             
             // 파일명 추출
             String filename = filePath.getFileName().toString();
-            
-            // 파일 타입 결정
-            String contentType = "application/octet-stream";
-            String lowerFilename = filename.toLowerCase();
-            
-            if (lowerFilename.endsWith(".mp4")) {
-                contentType = "video/mp4";
-            } else if (lowerFilename.endsWith(".webm")) {
-                contentType = "video/webm";
-            } else if (lowerFilename.endsWith(".avi")) {
-                contentType = "video/x-msvideo";
-            } else if (lowerFilename.endsWith(".mov")) {
-                contentType = "video/quicktime";
+
+            MediaType mediaType = MediaTypeFactory.getMediaType(filename)
+                    .orElse(MediaType.APPLICATION_OCTET_STREAM);
+
+            log.info("비디오 파일 제공 성공: {} (타입: {})", filePath, mediaType);
+
+            HttpHeaders responseHeaders = new HttpHeaders();
+            responseHeaders.setContentType(mediaType);
+            responseHeaders.set(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + filename + "\"");
+            responseHeaders.setCacheControl(CacheControl.maxAge(31536000, java.util.concurrent.TimeUnit.SECONDS).getHeaderValue());
+            responseHeaders.set(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "*");
+            responseHeaders.set(HttpHeaders.ACCEPT_RANGES, "bytes");
+
+            List<HttpRange> httpRanges = parseRanges(request);
+            if (!httpRanges.isEmpty()) {
+                HttpRange range = httpRanges.get(0);
+                ResourceRegion resourceRegion = rangeToRegion(range, resource);
+
+                log.info("부분 콘텐츠 제공 - range: {}", range);
+
+                return ResponseEntity.status(HttpStatus.PARTIAL_CONTENT)
+                        .headers(responseHeaders)
+                        .body(resourceRegion);
             }
-            
-            log.info("비디오 파일 제공 성공: {} (타입: {})", filePath, contentType);
-            
+
             return ResponseEntity.ok()
-                    .contentType(MediaType.parseMediaType(contentType))
-                    .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + filename + "\"")
-                    .header(HttpHeaders.CACHE_CONTROL, "max-age=31536000") // 1년 캐시
-                    .header(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "*") // CORS 헤더 추가
+                    .headers(responseHeaders)
                     .body(resource);
                     
         } catch (Exception e) {
@@ -90,5 +124,22 @@ public class FileController {
     @GetMapping("/health")
     public ResponseEntity<String> health() {
         return ResponseEntity.ok("File service is running. Upload directory: " + uploadDir);
+    }
+
+    private List<HttpRange> parseRanges(HttpServletRequest request) {
+        String rangeHeader = request.getHeader(HttpHeaders.RANGE);
+        if (rangeHeader == null) {
+            return List.of();
+        }
+        try {
+            return HttpRange.parseRanges(rangeHeader);
+        } catch (IllegalArgumentException ex) {
+            log.warn("잘못된 Range 헤더: {}", rangeHeader);
+            return List.of();
+        }
+    }
+
+    private ResourceRegion rangeToRegion(HttpRange range, Resource resource) {
+        return range.toResourceRegion(resource);
     }
 } 

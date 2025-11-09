@@ -52,6 +52,16 @@ public class VoiceAnalysis {
     @Column(name = "wpm_comment", columnDefinition = "TEXT")
     private String wpmComment;
 
+    // 불안 분석
+    @Column(name = "anxiety_grade", length = 10)
+    private String anxietyGrade;
+
+    @Column(name = "anxiety_ratio")
+    private Float anxietyRatio;
+
+    @Column(name = "anxiety_comment", columnDefinition = "TEXT")
+    private String anxietyComment;
+
     // 표정 분석
     @Column(name = "expression_grade", length = 10)
     private String expressionGrade;

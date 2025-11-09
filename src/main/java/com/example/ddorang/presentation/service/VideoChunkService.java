@@ -9,6 +9,7 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
 import java.io.*;
@@ -28,6 +29,9 @@ import java.util.Map;
 public class VideoChunkService {
 
     private static final long CHUNK_SIZE = 50 * 1024 * 1024; // 50MB
+    private static final int MAX_RETRY_ATTEMPTS = 3;
+    private static final long INITIAL_RETRY_DELAY_MILLIS = 2_000L;
+    private static final long MAX_RETRY_DELAY_MILLIS = 10_000L;
 
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
@@ -43,6 +47,18 @@ public class VideoChunkService {
      * @return FastAPI job_id
      */
     public String uploadVideoInChunks(File videoFile, Map<String, Object> metadata) {
+        return uploadVideoInChunks(videoFile, metadata, null);
+    }
+
+    /**
+     * 비디오 파일을 청크로 분할하고 FastAPI로 업로드 (video_path 반환용)
+     *
+     * @param videoFile 업로드할 비디오 파일
+     * @param metadata FastAPI에 전송할 메타데이터 (target_time 등)
+     * @param videoPathMap video_path를 저장할 Map (null 가능)
+     * @return FastAPI job_id
+     */
+    public String uploadVideoInChunks(File videoFile, Map<String, Object> metadata, Map<String, String> videoPathMap) {
         log.debug("DEBUG: VideoChunkService.uploadVideoInChunks() 메서드 진입");
         log.info("📦 청크 업로드 시작: {} ({}MB)",
             videoFile.getName(),
@@ -59,7 +75,7 @@ public class VideoChunkService {
 
             // 2. 청크를 FastAPI로 업로드
             String originalFilename = extractFilenameWithoutExtension(videoFile.getName());
-            String fastApiJobId = uploadChunks(chunks, originalFilename, metadata);
+            String fastApiJobId = uploadChunks(chunks, originalFilename, metadata, videoPathMap);
 
             log.info("청크 업로드 완료: job_id={}", fastApiJobId);
 
@@ -146,9 +162,17 @@ public class VideoChunkService {
     }
 
     /**
-     * 청크를 FastAPI /stt 엔드포인트로 순차 업로드
+     * 청크를 FastAPI /analysis 엔드포인트로 순차 업로드
      */
     private String uploadChunks(List<File> chunks, String originalFilename, Map<String, Object> metadata)
+            throws Exception {
+        return uploadChunks(chunks, originalFilename, metadata, null);
+    }
+
+    /**
+     * 청크를 FastAPI /analysis 엔드포인트로 순차 업로드 (video_path 반환용)
+     */
+    private String uploadChunks(List<File> chunks, String originalFilename, Map<String, Object> metadata, Map<String, String> videoPathMap)
             throws Exception {
 
         int totalChunks = chunks.size();
@@ -176,12 +200,7 @@ public class VideoChunkService {
             HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
 
             // FastAPI 호출
-            ResponseEntity<Map> response = restTemplate.exchange(
-                fastApiUrl + "/stt",
-                HttpMethod.POST,
-                requestEntity,
-                Map.class
-            );
+            ResponseEntity<Map<String, Object>> response = sendChunkWithRetry(requestEntity, i, totalChunks);
 
             if (!response.getStatusCode().is2xxSuccessful() || response.getBody() == null) {
                 throw new RuntimeException(
@@ -200,6 +219,33 @@ public class VideoChunkService {
                     log.info("FastAPI job_id 할당: {}", fastApiJobId);
                 }
             }
+            
+            // 마지막 청크에서 save_path 또는 video_path를 받을 수 있음
+            if (i == totalChunks - 1) {
+                String videoPath = null;
+                
+                // save_path 우선 확인 (FastAPI가 실제로 반환하는 필드)
+                if (response.getBody().containsKey("save_path")) {
+                    String savePath = (String) response.getBody().get("save_path");
+                    if (savePath != null && !savePath.isEmpty()) {
+                        // 절대 경로를 상대 경로로 변환
+                        videoPath = convertToRelativePath(savePath);
+                        log.info("📹 FastAPI에서 save_path 수신: {} → {}", savePath, videoPath);
+                    }
+                }
+                // video_path가 있으면 사용 (fallback)
+                else if (response.getBody().containsKey("video_path")) {
+                    videoPath = (String) response.getBody().get("video_path");
+                    if (videoPath != null && !videoPath.isEmpty()) {
+                        log.info("📹 FastAPI에서 video_path 수신: {}", videoPath);
+                    }
+                }
+                
+                // video_path를 Map에 저장 (상위로 전달)
+                if (videoPath != null && !videoPath.isEmpty() && videoPathMap != null) {
+                    videoPathMap.put("video_path", videoPath);
+                }
+            }
 
             log.debug("✓ 청크 {}/{} 업로드 완료", i + 1, totalChunks);
         }
@@ -210,6 +256,62 @@ public class VideoChunkService {
         }
 
         return fastApiJobId;
+    }
+
+    @SuppressWarnings("unchecked")
+    private ResponseEntity<Map<String, Object>> sendChunkWithRetry(
+        HttpEntity<MultiValueMap<String, Object>> requestEntity,
+        int chunkIndex,
+        int totalChunks
+    ) {
+        int attempt = 0;
+        long backoff = INITIAL_RETRY_DELAY_MILLIS;
+
+        while (attempt < MAX_RETRY_ATTEMPTS) {
+            try {
+                return (ResponseEntity<Map<String, Object>>) (ResponseEntity<?>) restTemplate.exchange(
+                    fastApiUrl + "/analysis",
+                    HttpMethod.POST,
+                    requestEntity,
+                    Map.class
+                );
+            } catch (ResourceAccessException ex) {
+                attempt++;
+                if (attempt >= MAX_RETRY_ATTEMPTS) {
+                    throw new RuntimeException(
+                        String.format(
+                            "청크 업로드 실패 (재시도 %d회 초과): 청크 %d/%d",
+                            MAX_RETRY_ATTEMPTS,
+                            chunkIndex + 1,
+                            totalChunks
+                        ),
+                        ex
+                    );
+                }
+
+                long sleepMillis = Math.min(backoff, MAX_RETRY_DELAY_MILLIS);
+                log.warn(
+                    "네트워크 오류로 청크 업로드 재시도 예정: 청크 {}/{} (시도 {}/{}) - {}: {}",
+                    chunkIndex + 1,
+                    totalChunks,
+                    attempt,
+                    MAX_RETRY_ATTEMPTS,
+                    ex.getClass().getSimpleName(),
+                    ex.getMessage()
+                );
+
+                try {
+                    Thread.sleep(sleepMillis);
+                } catch (InterruptedException interruptedException) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("청크 업로드 재시도 대기 중 인터럽트 발생", interruptedException);
+                }
+
+                backoff = Math.min(backoff * 2, MAX_RETRY_DELAY_MILLIS);
+            }
+        }
+
+        throw new IllegalStateException("청크 업로드 재시도 로직에서 도달할 수 없는 위치입니다.");
     }
 
     /**
@@ -270,4 +372,42 @@ public class VideoChunkService {
 
         return "";
     }
+
+    /**
+     * 절대 경로를 상대 경로로 변환
+     * 예: "C:/uploads/stored_videos/123.mp4" → "stored_videos/123.mp4"
+     * 예: "/app/uploads/stored_videos/123.mp4" → "stored_videos/123.mp4"
+     */
+    private String convertToRelativePath(String absolutePath) {
+        if (absolutePath == null || absolutePath.isEmpty()) {
+            return absolutePath;
+        }
+        
+        // Windows와 Linux 경로 모두 처리
+        String path = absolutePath.replace("\\", "/");
+        
+        // stored_videos 또는 videos 디렉터리가 포함된 경우, 그 이후 부분만 추출
+        int storedVideosIndex = path.indexOf("stored_videos");
+        if (storedVideosIndex >= 0) {
+            return path.substring(storedVideosIndex);
+        }
+
+        int videosIndex = path.indexOf("videos");
+        if (videosIndex >= 0) {
+            return path.substring(videosIndex);
+        }
+
+        // 위 디렉터리가 없더라도 파일명만이라도 추출해 반환
+        int lastSlashIndex = path.lastIndexOf('/');
+        if (lastSlashIndex >= 0 && lastSlashIndex < path.length() - 1) {
+            String filenameOnly = path.substring(lastSlashIndex + 1);
+            if (!filenameOnly.isEmpty()) {
+                return filenameOnly;
+            }
+        }
+        
+        // 상대 경로로 변환할 수 없는 경우 원본 반환
+        return absolutePath;
+    }
+
 }
