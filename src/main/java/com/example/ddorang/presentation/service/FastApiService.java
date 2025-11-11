@@ -42,7 +42,7 @@ public class FastApiService {
         log.info("FastAPI 음성 분석 요청 시작: {}, 파일 크기: {} bytes, 목표시간: {}초",
                 videoFile.getOriginalFilename(), videoFile.getSize(), goalTimeSeconds);
 
-        String url = fastApiBaseUrl + "/stt";
+        String url = fastApiBaseUrl + "/analysis";
         File tempFile = null;
 
         try {
@@ -64,7 +64,7 @@ public class FastApiService {
                     .baseUrl(fastApiBaseUrl)
                     .build()
                     .post()
-                    .uri("/stt")
+                    .uri("/analysis")
                     .contentType(MediaType.MULTIPART_FORM_DATA)
                     .body(BodyInserters.fromMultipartData(multipartData))
                     .retrieve()

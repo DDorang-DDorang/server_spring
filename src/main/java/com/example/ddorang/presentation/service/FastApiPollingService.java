@@ -39,7 +39,7 @@ public class FastApiPollingService {
         log.debug("DEBUG: VideoChunkService bean: {}", videoChunkService != null ? "OK" : "NULL");
 
         try {
-            // FastAPI /stt 엔드포인트 호출
+            // FastAPI /analysis 엔드포인트 호출
             log.debug("DEBUG: callFastApiStt() 호출 직전");
             String fastApiJobId = callFastApiStt(job);
             log.debug("DEBUG: callFastApiStt() 호출 직후 - 반환값: {}", fastApiJobId);
@@ -66,12 +66,12 @@ public class FastApiPollingService {
     }
 
 
-    // FastAPI /stt 엔드포인트 호출 (청크 업로드 방식)
+    // FastAPI /analysis 엔드포인트 호출 (청크 업로드 방식)
     private String callFastApiStt(VideoAnalysisJob job) {
         log.debug("DEBUG: callFastApiStt() 메서드 진입");
 
         try {
-            log.info("📹 FastAPI STT 호출 (청크 모드): {}", job.getVideoPath());
+            log.info("📹 FastAPI Analysis 호출 (청크 모드): {}", job.getVideoPath());
 
             // 비디오 파일 경로 처리
             String videoPath = job.getVideoPath();
@@ -121,7 +121,7 @@ public class FastApiPollingService {
             return fastApiJobId;
 
         } catch (Exception e) {
-            log.error("❌ FastAPI /stt 청크 업로드 실패 - 예외 타입: {}, 메시지: {}",
+            log.error("❌ FastAPI /analysis 청크 업로드 실패 - 예외 타입: {}, 메시지: {}",
                 e.getClass().getSimpleName(), e.getMessage(), e);
         }
 

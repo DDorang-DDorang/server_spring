@@ -146,7 +146,7 @@ public class VideoChunkService {
     }
 
     /**
-     * 청크를 FastAPI /stt 엔드포인트로 순차 업로드
+     * 청크를 FastAPI /analysis 엔드포인트로 순차 업로드
      */
     private String uploadChunks(List<File> chunks, String originalFilename, Map<String, Object> metadata)
             throws Exception {
@@ -177,7 +177,7 @@ public class VideoChunkService {
 
             // FastAPI 호출
             ResponseEntity<Map> response = restTemplate.exchange(
-                fastApiUrl + "/stt",
+                fastApiUrl + "/analysis",
                 HttpMethod.POST,
                 requestEntity,
                 Map.class
