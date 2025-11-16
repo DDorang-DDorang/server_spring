@@ -141,9 +141,10 @@ public class VoiceAnalysisService {
         SttResult sttResult = SttResult.builder()
                 .presentation(presentation)
                 .transcription(getStringValue(response, "transcription"))
-                .pronunciationScore(getFloatValue(response,"pronunciation_score"))
-                .pronunciationGrade(getStringValue(response, "pronunciation_grade"))
-                .pronunciationComment(getStringValue(response, "pronunciation_comment"))
+                // pronunciation 필드 처리 (올바른 철자와 오타 모두 지원)
+                .pronunciationScore(getPronunciationScore(response))
+                .pronunciationGrade(getPronunciationGrade(response))
+                .pronunciationComment(getPronunciationComment(response))
                     .adjustedScript(getStringValue(response, "adjusted_script")) // FastAPI에서 제공하지 않을 수 있음
                     .correctedScript(getStringValue(response, "corrected_transcription")) // corrected_transcription으로 변경
                 .build();
@@ -315,5 +316,41 @@ public class VoiceAnalysisService {
             log.error("JSON 변환 실패: {}", e.getMessage());
             return null;
         }
+    }
+
+    /**
+     * pronunciation_score 필드 추출 (올바른 철자와 오타 모두 지원)
+     */
+    private Float getPronunciationScore(Map<String, Object> response) {
+        Float score = getFloatValue(response, "pronunciation_score");
+        if (score != null) return score;
+        // 오타 지원: pronounciation_score
+        return getFloatValue(response, "pronounciation_score");
+    }
+
+    /**
+     * pronunciation_grade 필드 추출 (올바른 철자와 오타 모두 지원)
+     */
+    private String getPronunciationGrade(Map<String, Object> response) {
+        String grade = getStringValue(response, "pronunciation_grade");
+        if (grade != null) return grade;
+        // 오타 지원: pronounciation_grade
+        return getStringValue(response, "pronounciation_grade");
+    }
+
+    /**
+     * pronunciation_comment 필드 추출 (올바른 철자, 오타, text 필드 모두 지원)
+     */
+    private String getPronunciationComment(Map<String, Object> response) {
+        // 1. 올바른 철자: pronunciation_comment
+        String comment = getStringValue(response, "pronunciation_comment");
+        if (comment != null) return comment;
+        
+        // 2. 올바른 철자 + text: pronunciation_text
+        comment = getStringValue(response, "pronunciation_text");
+        if (comment != null) return comment;
+        
+        // 3. 오타: pronounciation_text
+        return getStringValue(response, "pronounciation_text");
     }
 } 

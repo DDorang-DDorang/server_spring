@@ -88,8 +88,22 @@ public class VideoChunkService {
             log.error("청크 업로드 실패: {}", videoFile.getName(), e);
             throw new RuntimeException("청크 업로드 중 오류 발생: " + e.getMessage(), e);
         } finally {
-            // 3. 임시 청크 파일 정리 (성공/실패 관계없이 반드시 실행)
-            cleanupChunks(chunks);
+            // 예외 발생 시에도 모든 청크 파일 정리 (업로드 중 삭제되지 않은 청크들)
+            for (File chunk : chunks) {
+                try {
+                    if (chunk != null && chunk.exists()) {
+                        boolean deleted = chunk.delete();
+                        if (deleted) {
+                            log.debug("🗑️ 예외 처리 중 청크 파일 삭제 완료: {}", chunk.getName());
+                        } else {
+                            log.warn("⚠️ 예외 처리 중 청크 파일 삭제 실패: {}", chunk.getName());
+                        }
+                    }
+                } catch (Exception e) {
+                    log.warn("⚠️ 예외 처리 중 청크 파일 삭제 중 오류 발생: {} - {}", 
+                        chunk != null ? chunk.getName() : "null", e.getMessage());
+                }
+            }
         }
     }
 
@@ -103,7 +117,15 @@ public class VideoChunkService {
         long fileSize = videoFile.length();
         int totalChunks = (int) Math.ceil((double) fileSize / CHUNK_SIZE);
 
-        log.debug("파일 크기: {}MB, 예상 청크 수: {}", fileSize / (1024 * 1024), totalChunks);
+        log.info("📊 파일 크기: {}MB, 예상 청크 수: {}", fileSize / (1024 * 1024), totalChunks);
+        
+        // 메모리 사용량 확인
+        Runtime runtime = Runtime.getRuntime();
+        long totalMemory = runtime.totalMemory();
+        long freeMemory = runtime.freeMemory();
+        long usedMemory = totalMemory - freeMemory;
+        log.info("💾 파일 분할 시작 전 메모리 - 사용: {}MB / 전체: {}MB / 사용 가능: {}MB", 
+            usedMemory / (1024 * 1024), totalMemory / (1024 * 1024), freeMemory / (1024 * 1024));
 
         // 원본 파일 확장자 추출
         String fileExtension = getFileExtension(videoFile.getName());
@@ -177,14 +199,58 @@ public class VideoChunkService {
 
         int totalChunks = chunks.size();
         String fastApiJobId = null;
+        
+        log.info("📦 청크 업로드 시작: 총 {}개 청크", totalChunks);
+        
+        // 메모리 사용량 확인
+        Runtime runtime = Runtime.getRuntime();
+        long totalMemory = runtime.totalMemory();
+        long freeMemory = runtime.freeMemory();
+        long usedMemory = totalMemory - freeMemory;
+        log.info("💾 청크 업로드 시작 전 메모리 상태 - 사용: {}MB / 전체: {}MB / 사용 가능: {}MB", 
+            usedMemory / (1024 * 1024), totalMemory / (1024 * 1024), freeMemory / (1024 * 1024));
 
+        // 메모리 모니터링을 위한 변수 (for 루프 내에서 재사용)
+        long maxMemory;
+        double memoryUsagePercent;
+        
         for (int i = 0; i < totalChunks; i++) {
             File chunk = chunks.get(i);
 
-            log.info("청크 업로드 중: {}/{} ({}MB)",
+            log.info("🔄 청크 업로드 중: {}/{} ({}MB)",
                 i + 1,
                 totalChunks,
                 chunk.length() / (1024 * 1024));
+            
+            // 각 청크 업로드 전 메모리 확인
+            runtime = Runtime.getRuntime();
+            totalMemory = runtime.totalMemory();
+            freeMemory = runtime.freeMemory();
+            usedMemory = totalMemory - freeMemory;
+            maxMemory = runtime.maxMemory();
+            memoryUsagePercent = (double) usedMemory / maxMemory * 100;
+            
+            log.info("💾 청크 {}/{} 업로드 전 메모리 - 사용: {}MB / 사용 가능: {}MB / 최대: {}MB (사용률: {}%)", 
+                i + 1, totalChunks, usedMemory / (1024 * 1024), freeMemory / (1024 * 1024), 
+                maxMemory / (1024 * 1024), String.format("%.1f", memoryUsagePercent));
+            
+            // 업로드 전에 메모리가 부족하면 GC 힌트 제공
+            if (memoryUsagePercent > 65.0 || freeMemory < (100 * 1024 * 1024)) { // 65% 이상 또는 100MB 이하
+                log.warn("⚠️ 청크 업로드 전 메모리 부족 감지 (사용률: {}%, 사용 가능: {}MB). GC 힌트를 제공합니다.", 
+                    String.format("%.1f", memoryUsagePercent), freeMemory / (1024 * 1024));
+                System.gc();
+                try {
+                    Thread.sleep(150); // GC 실행 시간 확보
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+                // GC 후 메모리 재확인
+                runtime = Runtime.getRuntime();
+                freeMemory = runtime.freeMemory();
+                usedMemory = runtime.totalMemory() - freeMemory;
+                log.info("💾 GC 힌트 후 메모리 - 사용: {}MB / 사용 가능: {}MB", 
+                    usedMemory / (1024 * 1024), freeMemory / (1024 * 1024));
+            }
 
             // 멀티파트 요청 구성
             HttpHeaders headers = new HttpHeaders();
@@ -208,12 +274,16 @@ public class VideoChunkService {
                         i + 1, totalChunks, response.getStatusCode()));
             }
 
+            // 응답 본문에서 필요한 정보만 추출 후 즉시 해제
+            Map<String, Object> responseBody = response.getBody();
+            
             // 응답 본문 로깅
-            log.info("청크 {}/{} 응답: {}", i + 1, totalChunks, response.getBody());
+            log.info("청크 {}/{} 응답: {}", i + 1, totalChunks, responseBody);
 
             // job_id 받기 (첫 번째 청크 또는 마지막 청크에서 올 수 있음)
-            if (response.getBody().containsKey("job_id")) {
-                String receivedJobId = (String) response.getBody().get("job_id");
+            String receivedJobId = null;
+            if (responseBody.containsKey("job_id")) {
+                receivedJobId = (String) responseBody.get("job_id");
                 if (receivedJobId != null && !receivedJobId.isEmpty()) {
                     fastApiJobId = receivedJobId;
                     log.info("FastAPI job_id 할당: {}", fastApiJobId);
@@ -221,12 +291,11 @@ public class VideoChunkService {
             }
             
             // 마지막 청크에서 save_path 또는 video_path를 받을 수 있음
+            String videoPath = null;
             if (i == totalChunks - 1) {
-                String videoPath = null;
-                
                 // save_path 우선 확인 (FastAPI가 실제로 반환하는 필드)
-                if (response.getBody().containsKey("save_path")) {
-                    String savePath = (String) response.getBody().get("save_path");
+                if (responseBody.containsKey("save_path")) {
+                    String savePath = (String) responseBody.get("save_path");
                     if (savePath != null && !savePath.isEmpty()) {
                         // 절대 경로를 상대 경로로 변환
                         videoPath = convertToRelativePath(savePath);
@@ -234,8 +303,8 @@ public class VideoChunkService {
                     }
                 }
                 // video_path가 있으면 사용 (fallback)
-                else if (response.getBody().containsKey("video_path")) {
-                    videoPath = (String) response.getBody().get("video_path");
+                else if (responseBody.containsKey("video_path")) {
+                    videoPath = (String) responseBody.get("video_path");
                     if (videoPath != null && !videoPath.isEmpty()) {
                         log.info("📹 FastAPI에서 video_path 수신: {}", videoPath);
                     }
@@ -246,8 +315,84 @@ public class VideoChunkService {
                     videoPathMap.put("video_path", videoPath);
                 }
             }
-
-            log.debug("✓ 청크 {}/{} 업로드 완료", i + 1, totalChunks);
+            
+            log.info("✅ 청크 {}/{} 업로드 완료", i + 1, totalChunks);
+            
+            // 응답 본문 및 객체 즉시 해제 (메모리 누수 방지)
+            // 필요한 정보는 이미 추출했으므로 즉시 해제
+            responseBody = null;
+            response = null;
+            
+            // requestEntity, body, headers 참조 해제 (업로드 완료 후 즉시)
+            requestEntity = null;
+            body = null;
+            headers = null;
+            
+            // 청크 파일 삭제 (업로드 완료 후 즉시 삭제하여 디스크 공간 확보)
+            try {
+                if (chunk.exists()) {
+                    // 삭제 전에 파일 크기 기록
+                    long chunkSize = chunk.length();
+                    boolean deleted = chunk.delete();
+                    if (deleted) {
+                        log.info("🗑️ 청크 파일 삭제 완료: {} ({}MB)", chunk.getName(), chunkSize / (1024 * 1024));
+                    } else {
+                        log.warn("⚠️ 청크 파일 삭제 실패: {} ({}MB)", chunk.getName(), chunkSize / (1024 * 1024));
+                    }
+                } else {
+                    log.debug("청크 파일이 이미 삭제됨: {}", chunk.getName());
+                }
+            } catch (Exception e) {
+                log.warn("⚠️ 청크 파일 삭제 중 오류 발생: {} - {}", chunk.getName(), e.getMessage());
+            }
+            
+            // 청크 파일 참조도 해제
+            chunk = null;
+            
+            // 청크 삭제 후 메모리 확인
+            runtime = Runtime.getRuntime();
+            totalMemory = runtime.totalMemory();
+            freeMemory = runtime.freeMemory();
+            usedMemory = totalMemory - freeMemory;
+            maxMemory = runtime.maxMemory();
+            memoryUsagePercent = (double) usedMemory / maxMemory * 100;
+            
+            log.info("💾 청크 {}/{} 삭제 후 메모리 - 사용: {}MB / 사용 가능: {}MB / 최대: {}MB (사용률: {}%)", 
+                i + 1, totalChunks, usedMemory / (1024 * 1024), freeMemory / (1024 * 1024), 
+                maxMemory / (1024 * 1024), String.format("%.1f", memoryUsagePercent));
+            
+            // 메모리 사용률이 70% 이상이거나 사용 가능한 메모리가 50MB 이하이면 GC 힌트 제공
+            boolean shouldTriggerGC = memoryUsagePercent > 70.0 || freeMemory < (50 * 1024 * 1024);
+            if (shouldTriggerGC) {
+                log.warn("⚠️ 메모리 사용률이 높습니다 ({}%) 또는 사용 가능 메모리가 부족합니다 ({}MB). GC 힌트를 제공합니다.", 
+                    String.format("%.1f", memoryUsagePercent), freeMemory / (1024 * 1024));
+                
+                // GC 힌트 제공 (실제 GC는 JVM이 결정)
+                System.gc();
+                
+                // GC 후 메모리 재확인 (짧은 대기 후)
+                try {
+                    Thread.sleep(200); // GC 실행 시간 확보 (100ms -> 200ms로 증가)
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    log.warn("GC 대기 중 인터럽트 발생");
+                }
+                
+                runtime = Runtime.getRuntime();
+                totalMemory = runtime.totalMemory();
+                freeMemory = runtime.freeMemory();
+                usedMemory = totalMemory - freeMemory;
+                memoryUsagePercent = (double) usedMemory / maxMemory * 100;
+                log.info("💾 GC 힌트 후 메모리 - 사용: {}MB / 사용 가능: {}MB / 최대: {}MB (사용률: {}%)", 
+                    usedMemory / (1024 * 1024), freeMemory / (1024 * 1024), 
+                    maxMemory / (1024 * 1024), String.format("%.1f", memoryUsagePercent));
+                
+                // GC 후에도 메모리가 여전히 부족하면 경고
+                if (freeMemory < (30 * 1024 * 1024)) { // 30MB 이하
+                    log.error("❌ GC 후에도 메모리가 부족합니다 (사용 가능: {}MB). 다음 청크 업로드가 실패할 수 있습니다.", 
+                        freeMemory / (1024 * 1024));
+                }
+            }
         }
 
         // 모든 청크 업로드 완료 후 job_id 확인
@@ -269,12 +414,51 @@ public class VideoChunkService {
 
         while (attempt < MAX_RETRY_ATTEMPTS) {
             try {
-                return (ResponseEntity<Map<String, Object>>) (ResponseEntity<?>) restTemplate.exchange(
+                log.info("🔄 청크 {}/{} 업로드 시도 중 (시도 {}/{})", chunkIndex + 1, totalChunks, attempt + 1, MAX_RETRY_ATTEMPTS);
+                long uploadStartTime = System.currentTimeMillis();
+                
+                ResponseEntity<Map<String, Object>> response = (ResponseEntity<Map<String, Object>>) (ResponseEntity<?>) restTemplate.exchange(
                     fastApiUrl + "/analysis",
                     HttpMethod.POST,
                     requestEntity,
                     Map.class
                 );
+                
+                long uploadEndTime = System.currentTimeMillis();
+                long uploadDuration = uploadEndTime - uploadStartTime;
+                log.info("✅ 청크 {}/{} 업로드 완료 (소요 시간: {}초)", chunkIndex + 1, totalChunks, uploadDuration / 1000.0);
+                
+                // 업로드 후 메모리 확인 및 필요시 GC 힌트
+                Runtime runtime = Runtime.getRuntime();
+                long totalMemory = runtime.totalMemory();
+                long freeMemory = runtime.freeMemory();
+                long usedMemory = totalMemory - freeMemory;
+                long maxMemory = runtime.maxMemory();
+                double memoryUsagePercent = (double) usedMemory / maxMemory * 100;
+                
+                log.info("💾 청크 {}/{} 업로드 후 메모리 - 사용: {}MB / 사용 가능: {}MB / 최대: {}MB (사용률: {}%)", 
+                    chunkIndex + 1, totalChunks, usedMemory / (1024 * 1024), freeMemory / (1024 * 1024),
+                    maxMemory / (1024 * 1024), String.format("%.1f", memoryUsagePercent));
+                
+                // 메모리 사용률이 높거나 사용 가능한 메모리가 부족하면 GC 힌트 제공
+                if (memoryUsagePercent > 75.0 || freeMemory < (80 * 1024 * 1024)) { // 75% 이상 또는 80MB 이하
+                    log.warn("⚠️ 업로드 후 메모리 부족 감지 (사용률: {}%, 사용 가능: {}MB). GC 힌트를 제공합니다.", 
+                        String.format("%.1f", memoryUsagePercent), freeMemory / (1024 * 1024));
+                    System.gc();
+                    try {
+                        Thread.sleep(100); // GC 실행 시간 확보
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                    // GC 후 메모리 재확인
+                    runtime = Runtime.getRuntime();
+                    freeMemory = runtime.freeMemory();
+                    usedMemory = runtime.totalMemory() - freeMemory;
+                    log.info("💾 GC 힌트 후 메모리 - 사용: {}MB / 사용 가능: {}MB", 
+                        usedMemory / (1024 * 1024), freeMemory / (1024 * 1024));
+                }
+                
+                return response;
             } catch (ResourceAccessException ex) {
                 attempt++;
                 if (attempt >= MAX_RETRY_ATTEMPTS) {

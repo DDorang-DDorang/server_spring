@@ -5,7 +5,6 @@ import com.example.ddorang.presentation.entity.PresentationComparison;
 import com.example.ddorang.presentation.entity.Topic;
 import com.example.ddorang.presentation.repository.*;
 import com.example.ddorang.presentation.entity.VideoAnalysisJob;
-import com.example.ddorang.presentation.util.InMemoryMultipartFile;
 import com.example.ddorang.team.entity.Team;
 import com.example.ddorang.team.entity.TeamMember;
 import com.example.ddorang.team.repository.TeamRepository;
@@ -20,6 +19,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.io.File;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -193,27 +193,27 @@ public class PresentationService {
                 // DB에 초기 상태 저장
                 videoAnalysisService.initializeJob(job);
                 
-                byte[] videoBytes = videoFile.getBytes();
-                MultipartFile asyncVideoFile = new InMemoryMultipartFile(
-                    "videoFile",
-                    videoFile.getOriginalFilename(),
-                    videoFile.getContentType(),
-                    videoBytes
-                );
+                // 트랜잭션 커밋 전에 MultipartFile을 임시 파일로 저장
+                // (커밋 후에는 MultipartFile이 정리되어 접근 불가)
+                log.info("📁 트랜잭션 커밋 전 임시 파일 생성 시작: {} (크기: {}MB)", 
+                    videoFile.getOriginalFilename(), videoFile.getSize() / (1024 * 1024));
+                File tempFile = File.createTempFile("video_upload_", "_" + videoFile.getOriginalFilename());
+                videoFile.transferTo(tempFile);
+                log.info("✅ 임시 파일 생성 완료: {} ({}MB)", tempFile.getAbsolutePath(), tempFile.length() / (1024 * 1024));
                 
-                // FastAPI 폴링 시작 (백그라운드) - 파일을 분석 서버로 직접 전달
+                // FastAPI 폴링 시작 (백그라운드) - File 객체 전달
                 if (TransactionSynchronizationManager.isSynchronizationActive()) {
                     VideoAnalysisJob finalJob = job;
-                    MultipartFile finalVideoFile = asyncVideoFile;
+                    File finalTempFile = tempFile; // 임시 파일 전달
                     TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                         @Override
                         public void afterCommit() {
                             log.info("트랜잭션 커밋 후 자동 분석 작업 시작 - 작업 ID: {}", finalJob.getId());
-                            fastApiPollingService.startVideoAnalysis(finalJob, finalVideoFile);
+                            fastApiPollingService.startVideoAnalysis(finalJob, finalTempFile);
                         }
                     });
                 } else {
-                    fastApiPollingService.startVideoAnalysis(job, asyncVideoFile);
+                    fastApiPollingService.startVideoAnalysis(job, tempFile);
                 }
                 
                 log.info("자동 분석 작업 시작 등록 완료 - 작업 ID: {}", job.getId());
